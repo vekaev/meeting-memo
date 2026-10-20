@@ -1,0 +1,37 @@
+name: MeetingMemo
+options:
+  bundleIdPrefix: com.yevheniipetrenko
+  deploymentTarget:
+    macOS: "15.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+targets:
+  MeetingMemo:
+    type: application
+    platform: macOS
+    sources: [App, Core]
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Meeting Memo
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.productivity
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        # Menu-bar only: no Dock icon, no main window.
+        LSUIElement: true
+        NSCalendarsFullAccessUsageDescription: Meeting Memo watches your calendar for the meetings you chose, so it can offer to record them when they start.
+        NSMicrophoneUsageDescription: Meeting Memo records your microphone during meetings you start recording.
+        NSAudioCaptureUsageDescription: Meeting Memo records the call audio (other participants) during meetings you start recording.
+    settings:
+      base:
+        # Kept from the first builds so macOS privacy permissions and settings carry over.
+        PRODUCT_BUNDLE_IDENTIFIER: com.yevheniipetrenko.MeetingMemo
+        PRODUCT_NAME: Meeting Memo
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ENABLE_APP_SANDBOX: NO
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual

@@ -1,0 +1,73 @@
+# Meeting Memo: working rules
+
+**Record the meetings you choose. Nothing else.** Keep it that small: every feature must defend its place against that line.
+It never records without a click, never uploads, never edits the calendar.
+
+A menu-bar-only Mac app (`LSUIElement`, `MenuBarExtra` in window style):
+
+| | Where |
+|---|---|
+| App, menu, settings, prompt card | `App/` (`App.swift`, `MenuView.swift`, `SettingsView.swift`, `PromptPanel.swift`, `AppController.swift`) |
+| Recording, calendar, settings store (no SwiftUI) | `Core/` (`Recorder.swift`, `CalendarWatcher.swift`, `Store.swift`) |
+| Info.plist | generated from `project.yml` (`info.properties`); edit it there, not in `App/Info.plist` |
+| Scheme | `MeetingMemo` (product "Meeting Memo", bundle id `com.yevheniipetrenko.MeetingMemo`) |
+
+Mac only on purpose: iPhone/iPad can't capture another app's call audio. See the parity table.
+
+## Every change: build, restart, verify, push
+
+1. Build:
+   ```bash
+   xcodegen generate
+   xcodebuild -project MeetingMemo.xcodeproj -scheme MeetingMemo -configuration Debug -derivedDataPath build -quiet build
+   ```
+2. Restart the app with the new build when a change is done, without asking:
+   ```bash
+   scripts/install-mac.sh     # builds Release, quits the running copy normally, installs to ~/Applications, reopens
+   ```
+   It re-signs with the local Apple Development identity so macOS keeps the Calendar, Microphone and
+   Screen & System Audio permissions across builds (ad-hoc signatures would reset them every time).
+3. Verify on screen. The menu is a `MenuBarExtra` window, which computer-use screenshots filter out (the app
+   isn't in the installed-apps list): open it with a `computer_batch` click on the menu-bar icon, then capture
+   with `screencapture -x -R…` from Bash in the next call. Any further computer-use call closes the menu.
+   Find the icon first with a `screencapture` of the menu bar; its position moves after every relaunch.
+   Report what was and wasn't seen.
+4. Commit and push each finished fix to `main`; update the README and the parity table.
+
+## Design
+
+Minimal, monochrome, Apple-like. The menu reads like a native menu: rows highlight on hover, secondary text
+for dates, red only for "recording" and "Now". The prompt card is a non-activating floating panel in the
+top-right corner so it never steals focus from the meeting app. Settings live in their own window.
+
+## Method (installed skills)
+
+Decisions are the owner's, facts are the agent's. Open design questions → `grilling` (rounds of numbered
+questions, each with a recommended answer). Terms → `GLOSSARY.md`, decisions with reasons → `docs/adr/`
+(`domain-modeling`). Logic in `Core/` → `tdd` at agreed seams, with a `swiftc` harness over `Core/*.swift`.
+API facts (EventKit, ScreenCaptureKit) → `research`. "It's broken" → `diagnosing-bugs`. Before a release →
+`code-review`, then `references/release.md` of the bootstrap-app skill. After a long session → `retro`,
+folded back into this file.
+
+## Owner's data
+
+Recordings in `~/Documents/Meeting Recordings` and the owner's calendar are read-only for tests. Never create
+calendar events or start a recording to test without asking first. Test file operations on copies in the
+scratchpad.
+
+## Parity table
+
+| Feature | Mac | iPhone / iPad |
+|---|---|---|
+| Record mic + call audio | ScreenCaptureKit + mic | n/a: iOS can't capture other apps' audio |
+| Prompt at meeting start / end | floating card | n/a |
+| Meetings with next date, open in Calendar | menu-bar menu | n/a |
+
+## Debugging
+
+- Errors go to `NSLog("MeetingMemo: …")`; in this shell `log` is shadowed:
+  `/usr/bin/log show --last 5m --style compact --predicate 'eventMessage CONTAINS "MeetingMemo:"'`.
+- Settings: `~/Library/Application Support/MeetingMemo/settings.json`. In-progress call recordings:
+  `~/Library/Application Support/MeetingMemo/In Progress/`.
+- Opening one event in Calendar uses the undocumented `ical://ekevent/<id>?method=show&options=more`
+  (recurring events: `ical://ekevent/<yyyyMMddTHHmmssZ>/<id>…`); it falls back to opening Calendar.

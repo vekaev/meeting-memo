@@ -1,0 +1,58 @@
+<div align="center">
+
+<img src="docs/icon.png" width="112" alt="Meeting Memo icon" />
+
+# Meeting Memo
+
+**Record the meetings you choose. Nothing else.**
+
+A tiny menu-bar app for Mac that watches your calendar for the meetings you picked, offers to record them when
+they start, asks to stop when they end, and files each recording under a numbered name. Native Swift,
+on-device, nothing uploaded.
+
+[![Swift](https://img.shields.io/badge/Swift-native-F05138?style=flat-square&logo=swift&logoColor=white)](https://swift.org)
+[![macOS](https://img.shields.io/badge/macOS%2015%2B-native-000000?style=flat-square&logo=apple&logoColor=white)](#get-started)
+[![License: MIT](https://img.shields.io/badge/license-MIT-3a3a3a?style=flat-square)](LICENSE)
+[![Status: early](https://img.shields.io/badge/status-early-d69e2e?style=flat-square)](#status)
+
+</div>
+
+## Features
+
+- **Meetings from your calendar.** In Settings, pick the meetings to record (for example "Psychotherapist").
+  Any calendar event whose title contains that text counts.
+- **Asks at the right moments.** A small card appears when a chosen meeting starts ("Start Recording"), and
+  again when it is scheduled to end ("Stop & Save"). It never records without a click.
+- **Mic + call audio.** Records your microphone and the other participants (system audio via
+  ScreenCaptureKit) into one `.m4a`. Falls back to mic only if screen-audio access is off.
+- **Numbered names.** `Psychotherapist #2 — 2026-10-27 08.00.m4a`, numbered per meeting, saved to
+  `~/Documents/Meeting Recordings` (or a folder you choose).
+- **Menu bar.** Each meeting with its next date and time, soonest first: click the name to start recording,
+  click the date to open the event in Calendar. Quick recording for anything else. The last saved file is
+  one click from Finder.
+- Launch at login, optional lead time before the meeting, "Now · until 9:00 AM" while a meeting is on.
+
+## Get started
+
+```bash
+brew install xcodegen
+git clone https://github.com/vekaev/meeting-memo && cd meeting-memo
+scripts/install-mac.sh      # build, install to ~/Applications, open
+```
+
+The first time, macOS asks for Calendar, Microphone and Screen & System Audio Recording access.
+`scripts/build-app.sh` builds a universal `dist/MeetingMemo-mac.dmg`.
+
+## Privacy
+
+Everything stays on your Mac: recordings go to the folder you chose, settings to
+`~/Library/Application Support/MeetingMemo/settings.json`. No network access, no analytics.
+Recording other people may require their consent where you live; Meeting Memo leaves that to you.
+
+## Status
+
+Early, used daily by its author. Issues and ideas welcome.
+
+## License
+
+MIT
