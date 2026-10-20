@@ -13,8 +13,6 @@ struct MenuView: View {
             } else {
                 startSection
             }
-            Divider()
-            upcomingSection
             if controller.lastSaved != nil || controller.lastMessage != nil {
                 VStack(alignment: .leading, spacing: 4) {
                     if let saved = controller.lastSaved {
@@ -84,66 +82,40 @@ struct MenuView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text("Start recording now").font(.headline).padding(.bottom, 4)
             ForEach(store.settings.rules.filter(\.enabled)) { rule in
-                Button {
-                    Task { await controller.startRecording(ruleID: rule.id, occurrence: currentOccurrence(for: rule)) }
-                } label: {
-                    HStack(spacing: 8) {
-                        Label("\(rule.name) #\(rule.nextNumber)", systemImage: "record.circle").lineLimit(1)
-                        Spacer(minLength: 8)
-                        if let next = calendar.upcoming.first(where: { $0.ruleID == rule.id }) {
-                            MeetingTime(occurrence: next)
-                        }
-                    }
-                }
+                MeetingRow(
+                    title: "\(rule.name) #\(rule.nextNumber)",
+                    next: calendar.upcoming.first { $0.ruleID == rule.id },
+                    onStart: {
+                        Task { await controller.startRecording(ruleID: rule.id, occurrence: currentOccurrence(for: rule)) }
+                    },
+                    onOpen: { calendar.openInCalendar($0) }
+                )
             }
             Button {
                 Task { await controller.startRecording(ruleID: nil) }
             } label: {
                 Label("Quick recording", systemImage: "mic")
             }
+            .buttonStyle(MenuRowButtonStyle())
+            calendarNotes.padding(.top, 4)
         }
-        .buttonStyle(MenuRowButtonStyle())
         .disabled(controller.isBusy)
     }
 
     @ViewBuilder
-    private var upcomingSection: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("Upcoming").font(.headline).padding(.bottom, 4)
-            switch calendar.access {
-            case .granted:
-                if calendar.upcoming.isEmpty {
-                    Text(store.settings.rules.isEmpty
-                         ? "Add a meeting in Settings to get reminders."
-                         : "No matching meetings in the next 2 weeks.")
-                        .font(.callout).foregroundStyle(.secondary)
-                } else {
-                    ForEach(nextPerMeeting) { occurrence in
-                        Button { calendar.openInCalendar(occurrence) } label: {
-                            HStack(spacing: 8) {
-                                Text(occurrence.title).lineLimit(1)
-                                Spacer(minLength: 8)
-                                MeetingTime(occurrence: occurrence)
-                            }
-                            .font(.callout)
-                        }
-                        .buttonStyle(MenuRowButtonStyle())
-                        .help("Open in Calendar")
-                    }
-                }
-            case .unknown:
-                Button("Allow Calendar Access") { Task { await calendar.requestAccess() } }
-            case .denied:
-                Text("Calendar access is off.").font(.callout).foregroundStyle(.secondary)
-                Button("Open Privacy Settings") { controller.openPrivacySettings("Privacy_Calendars") }
+    private var calendarNotes: some View {
+        switch calendar.access {
+        case .granted:
+            if store.settings.rules.isEmpty {
+                Text("Add a meeting in Settings to see its next date here.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
+        case .unknown:
+            Button("Allow Calendar Access") { Task { await calendar.requestAccess() } }
+        case .denied:
+            Text("Calendar access is off.").font(.caption).foregroundStyle(.secondary)
+            Button("Open Privacy Settings") { controller.openPrivacySettings("Privacy_Calendars") }
         }
-    }
-
-    /// Only the next occurrence of each meeting, so weekly series don't repeat in the list.
-    private var nextPerMeeting: [Occurrence] {
-        var seen = Set<UUID?>()
-        return calendar.upcoming.filter { seen.insert($0.ruleID).inserted }
     }
 
     /// The occurrence happening now for a rule, so a manual start still uses the meeting's date.
@@ -176,6 +148,59 @@ private struct MeetingTime: View {
     }
 }
 
+/// A meeting row: clicking the name starts recording, clicking the date opens the event in Calendar.
+private struct MeetingRow: View {
+    let title: String
+    let next: Occurrence?
+    let onStart: () -> Void
+    let onOpen: (Occurrence) -> Void
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var isHovered = false
+    @State private var isDateHovered = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button(action: onStart) {
+                Label(title, systemImage: "record.circle")
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Start recording")
+            if let next {
+                Button { onOpen(next) } label: {
+                    MeetingTime(occurrence: next).underline(isDateHovered)
+                }
+                .buttonStyle(.plain)
+                .onHover { isDateHovered = $0 }
+                .help("Open in Calendar")
+            }
+        }
+        .foregroundStyle(.primary)
+        .menuRowHighlight(isHovered && isEnabled)
+        .opacity(isEnabled ? 1 : 0.5)
+        .onHover { isHovered = $0 }
+    }
+}
+
+private extension View {
+    /// Full-width row padding with a rounded highlight; the text stays aligned with the section headers.
+    func menuRowHighlight(_ isOn: Bool, pressed: Bool = false) -> some View {
+        frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.primary.opacity(pressed ? 0.16 : 0.08))
+                    .opacity(isOn ? 1 : 0)
+            )
+            .padding(.horizontal, -8)
+            .animation(.easeOut(duration: 0.12), value: isOn)
+    }
+}
+
 /// A full-width menu row that highlights while the pointer is over it.
 struct MenuRowButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
@@ -190,20 +215,9 @@ struct MenuRowButtonStyle: ButtonStyle {
         var body: some View {
             configuration.label
                 .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .contentShape(RoundedRectangle(cornerRadius: 6))
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.primary.opacity(configuration.isPressed ? 0.16 : 0.08))
-                        .opacity(isHovered && isEnabled ? 1 : 0)
-                )
+                .menuRowHighlight(isHovered && isEnabled, pressed: configuration.isPressed)
                 .opacity(isEnabled ? 1 : 0.5)
-                // Keep the text aligned with the section headers; the highlight extends into the margin.
-                .padding(.horizontal, -8)
                 .onHover { isHovered = $0 }
-                .animation(.easeOut(duration: 0.12), value: isHovered)
         }
     }
 }
