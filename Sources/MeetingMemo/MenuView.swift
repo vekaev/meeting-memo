@@ -81,10 +81,10 @@ struct MenuView: View {
     private var startSection: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("Start recording now").font(.headline).padding(.bottom, 4)
-            ForEach(store.settings.rules.filter(\.enabled)) { rule in
+            ForEach(meetingsBySoonest, id: \.rule.id) { rule, next in
                 MeetingRow(
                     title: "\(rule.name) #\(rule.nextNumber)",
-                    next: calendar.upcoming.first { $0.ruleID == rule.id },
+                    next: next,
                     onStart: {
                         Task { await controller.startRecording(ruleID: rule.id, occurrence: currentOccurrence(for: rule)) }
                     },
@@ -116,6 +116,22 @@ struct MenuView: View {
             Text("Calendar access is off.").font(.caption).foregroundStyle(.secondary)
             Button("Open Privacy Settings") { controller.openPrivacySettings("Privacy_Calendars") }
         }
+    }
+
+    /// Enabled meetings with their next occurrence, soonest first; ones with nothing coming up go last.
+    private var meetingsBySoonest: [(rule: Rule, next: Occurrence?)] {
+        store.settings.rules.filter(\.enabled)
+            .map { rule in (rule, calendar.upcoming.first { $0.ruleID == rule.id }) }
+            .enumerated()
+            .sorted { a, b in
+                switch (a.element.1?.start, b.element.1?.start) {
+                case let (x?, y?): return x < y
+                case (_?, nil): return true
+                case (nil, _?): return false
+                case (nil, nil): return a.offset < b.offset
+                }
+            }
+            .map { (rule: $0.element.0, next: $0.element.1) }
     }
 
     /// The occurrence happening now for a rule, so a manual start still uses the meeting's date.
