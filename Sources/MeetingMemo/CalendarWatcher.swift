@@ -8,7 +8,11 @@ struct Occurrence: Identifiable, Hashable {
     let title: String
     let start: Date
     let end: Date
-    let ruleID: UUID
+    /// Nil for a calendar event that matches no rule.
+    let ruleID: UUID?
+    /// EventKit identifiers, used to open the event in Calendar.
+    var calendarItemID: String? = nil
+    var isRecurring = false
 }
 
 /// Upcoming event offered in "Add from calendar".
@@ -100,10 +104,8 @@ final class CalendarWatcher: ObservableObject {
             .sorted { $0.startDate < $1.startDate }
 
         upcoming = events.compactMap { event in
-            let title = event.title ?? ""
-            guard let rule = store.firstRule(matching: title) else { return nil }
-            let key = "\(event.calendarItemExternalIdentifier ?? event.eventIdentifier ?? title)|\(Int(event.startDate.timeIntervalSince1970))"
-            return Occurrence(id: key, title: title, start: event.startDate, end: event.endDate, ruleID: rule.id)
+            guard let rule = store.firstRule(matching: event.title ?? "") else { return nil }
+            return occurrence(for: event, ruleID: rule.id)
         }
 
         var seen = Set<String>()
@@ -111,6 +113,50 @@ final class CalendarWatcher: ObservableObject {
             guard let title = event.title, !title.isEmpty, seen.insert(title).inserted else { return nil }
             return CalendarEventSummary(title: title, nextStart: event.startDate)
         }
+    }
+
+    /// The meeting happening at `date` (or starting within 15 min), preferring ones that match a rule.
+    func meetingInProgress(at date: Date) -> Occurrence? {
+        let soon = date.addingTimeInterval(15 * 60)
+        if let match = upcoming.first(where: { $0.start <= soon && date < $0.end }) {
+            return match
+        }
+        guard access == .granted else { return nil }
+        let predicate = eventStore.predicateForEvents(withStart: date.addingTimeInterval(-12 * 3600), end: soon, calendars: nil)
+        return eventStore.events(matching: predicate)
+            .filter { !$0.isAllDay && $0.startDate <= soon && date < $0.endDate }
+            .max { $0.startDate < $1.startDate }
+            .map { occurrence(for: $0, ruleID: nil) }
+    }
+
+    /// Shows the event in Calendar.app, or just opens Calendar on its day if the event can't be addressed.
+    func openInCalendar(_ occurrence: Occurrence) {
+        if let id = occurrence.calendarItemID,
+           let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) {
+            var path = encoded
+            if occurrence.isRecurring {
+                // Recurring events need the occurrence's start (UTC) to open the right instance.
+                let formatter = DateFormatter()
+                formatter.locale = Locale(identifier: "en_US_POSIX")
+                formatter.timeZone = TimeZone(identifier: "UTC")
+                formatter.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
+                path = "\(formatter.string(from: occurrence.start))/\(encoded)"
+            }
+            if let url = URL(string: "ical://ekevent/\(path)?method=show&options=more"),
+               NSWorkspace.shared.open(url) {
+                return
+            }
+        }
+        if let calendarApp = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") {
+            NSWorkspace.shared.open(calendarApp)
+        }
+    }
+
+    private func occurrence(for event: EKEvent, ruleID: UUID?) -> Occurrence {
+        let title = event.title ?? ""
+        let key = "\(event.calendarItemExternalIdentifier ?? event.eventIdentifier ?? title)|\(Int(event.startDate.timeIntervalSince1970))"
+        return Occurrence(id: key, title: title, start: event.startDate, end: event.endDate, ruleID: ruleID,
+                          calendarItemID: event.calendarItemIdentifier, isRecurring: event.hasRecurrenceRules)
     }
 
     private func updateAccess() {

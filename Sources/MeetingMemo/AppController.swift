@@ -23,6 +23,8 @@ final class AppController: ObservableObject {
     @Published private(set) var active: ActiveRecording?
     @Published private(set) var isBusy = false
     @Published var lastMessage: String?
+    /// The most recently saved recording, shown in the menu so it can be revealed in Finder.
+    @Published private(set) var lastSaved: URL?
     @Published private(set) var elapsedText = ""
     @Published private(set) var launchAtLogin = SMAppService.mainApp.status == .enabled
 
@@ -37,7 +39,7 @@ final class AppController: ObservableObject {
     // MARK: Prompts
 
     private func offerRecording(for occurrence: Occurrence) {
-        guard active == nil, let rule = store.rule(id: occurrence.ruleID) else { return }
+        guard active == nil, let ruleID = occurrence.ruleID, let rule = store.rule(id: ruleID) else { return }
         let startsIn = occurrence.start.timeIntervalSinceNow
         let when = startsIn > 60
             ? "starts in \(Int((startsIn / 60).rounded())) min"
@@ -91,7 +93,9 @@ final class AppController: ObservableObject {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let url = Naming.uniqueFileURL(in: folder, title: title)
             let (session, withCallAudio) = try await makeSession(finalURL: url)
-            active = ActiveRecording(title: title, ruleID: ruleID, occurrence: occurrence, startedAt: Date(),
+            // Manual and quick recordings still follow the meeting on the calendar, so we can ask to stop at its end.
+            let meeting = occurrence ?? calendar.meetingInProgress(at: Date())
+            active = ActiveRecording(title: title, ruleID: ruleID, occurrence: meeting, startedAt: Date(),
                                      url: url, session: session, includesCallAudio: withCallAudio)
             lastMessage = withCallAudio || !store.settings.recordCallAudio
                 ? nil
@@ -112,7 +116,8 @@ final class AppController: ObservableObject {
         do {
             try await recording.session.stop()
             store.commitNumber(ruleID: recording.ruleID)
-            lastMessage = "Saved “\(recording.url.lastPathComponent)”"
+            lastSaved = recording.url
+            lastMessage = nil
         } catch {
             lastMessage = "Recording failed: \(error.localizedDescription)"
             NSLog("MeetingMemo: stop failed: \(error)")
@@ -191,6 +196,15 @@ final class AppController: ObservableObject {
     func openOutputFolder() {
         try? FileManager.default.createDirectory(at: store.outputFolderURL, withIntermediateDirectories: true)
         NSWorkspace.shared.open(store.outputFolderURL)
+    }
+
+    /// Selects the last saved recording in Finder (or opens the folder if it has been moved).
+    func revealLastSaved() {
+        guard let url = lastSaved, FileManager.default.fileExists(atPath: url.path) else {
+            openOutputFolder()
+            return
+        }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     func openPrivacySettings(_ pane: String) {
