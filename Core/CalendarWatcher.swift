@@ -13,6 +13,8 @@ struct Occurrence: Identifiable, Hashable {
     /// EventKit identifiers, used to open the event in Calendar.
     var calendarItemID: String? = nil
     var isRecurring = false
+    /// Other attendees' names (or the part of their email before "@").
+    var attendees: [String] = []
 }
 
 /// Upcoming event offered in "Add from calendar".
@@ -156,7 +158,15 @@ final class CalendarWatcher: ObservableObject {
         let title = event.title ?? ""
         let key = "\(event.calendarItemExternalIdentifier ?? event.eventIdentifier ?? title)|\(Int(event.startDate.timeIntervalSince1970))"
         return Occurrence(id: key, title: title, start: event.startDate, end: event.endDate, ruleID: ruleID,
-                          calendarItemID: event.calendarItemIdentifier, isRecurring: event.hasRecurrenceRules)
+                          calendarItemID: event.calendarItemIdentifier, isRecurring: event.hasRecurrenceRules,
+                          attendees: (event.attendees ?? []).filter { !$0.isCurrentUser }.map(Self.displayName))
+    }
+
+    /// "Ari Korin", or "Ari" for a participant known only as ari@tavus.io.
+    private static func displayName(_ participant: EKParticipant) -> String {
+        if let name = participant.name, !name.isEmpty, !name.contains("@") { return name }
+        let address = participant.name ?? participant.url.absoluteString.replacingOccurrences(of: "mailto:", with: "")
+        return String(address.split(separator: "@").first ?? Substring(address)).capitalized
     }
 
     private func updateAccess() {

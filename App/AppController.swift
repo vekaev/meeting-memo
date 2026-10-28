@@ -27,6 +27,8 @@ final class AppController: ObservableObject {
     @Published private(set) var lastSaved: URL?
     @Published private(set) var elapsedText = ""
     @Published private(set) var launchAtLogin = SMAppService.mainApp.status == .enabled
+    /// A meeting whose "Start Recording?" card is waiting for an answer; the menu-bar icon shows it.
+    @Published private(set) var pendingOffer: Occurrence?
 
     private var elapsedTimer: Timer?
 
@@ -40,21 +42,51 @@ final class AppController: ObservableObject {
 
     private func offerRecording(for occurrence: Occurrence) {
         guard active == nil, let ruleID = occurrence.ruleID, let rule = store.rule(id: ruleID) else { return }
-        let startsIn = occurrence.start.timeIntervalSinceNow
-        let when = startsIn > 60
-            ? "starts in \(Int((startsIn / 60).rounded())) min"
-            : "is starting"
+        let fileTitle = Naming.title(name: rule.name, number: rule.nextNumber, date: occurrence.start)
+        var options: [(title: String, action: () -> Void)] = [
+            ("Remind Me in 5 Minutes", { [weak self] in self?.remindAgain(occurrence) }),
+        ]
+        if occurrence.calendarItemID != nil {
+            options.append(("Open in Calendar", { [weak self] in
+                self?.calendar.openInCalendar(occurrence)
+                self?.pendingOffer = nil
+            }))
+        }
+        pendingOffer = occurrence
         prompt.show(
-            symbol: "record.circle",
-            title: "\(occurrence.title) \(when)",
-            subtitle: "Save as “\(Naming.title(name: rule.name, number: rule.nextNumber, date: occurrence.start))”",
-            primary: "Start Recording",
-            secondary: "Not Now",
+            PromptContent(
+                title: occurrence.title,
+                when: Self.relativeStart(occurrence.start),
+                people: occurrence.attendees,
+                fallbackDetail: "Saves as “\(fileTitle)”",
+                primary: "Start Recording",
+                primarySymbol: "record.circle.fill",
+                secondary: "Ignore",
+                options: options
+            ),
             onPrimary: { [weak self] in
+                self?.pendingOffer = nil
                 Task { await self?.startRecording(ruleID: rule.id, occurrence: occurrence) }
             },
-            onSecondary: {}
+            onSecondary: { [weak self] in self?.pendingOffer = nil }
         )
+    }
+
+    /// Shows the prompt again in 5 minutes if the meeting is still on and nothing is recording.
+    private func remindAgain(_ occurrence: Occurrence) {
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5 * 60))
+            guard let self, self.active == nil, Date() < occurrence.end else { return }
+            self.offerRecording(for: occurrence)
+        }
+    }
+
+    /// "in 5 min", "now", "12 min ago".
+    private static func relativeStart(_ start: Date) -> String {
+        let minutes = Int((start.timeIntervalSinceNow / 60).rounded())
+        if minutes >= 1 { return "in \(minutes) min" }
+        if minutes <= -2 { return "\(-minutes) min ago" }
+        return "now"
     }
 
     private func checkMeetingEnd(_ now: Date) {
@@ -63,11 +95,14 @@ final class AppController: ObservableObject {
         recording.askedToStop = true
         active = recording
         prompt.show(
-            symbol: "stop.circle",
-            title: "\(occurrence.title) was scheduled to end",
-            subtitle: "Still recording “\(recording.title)” · \(elapsedText)",
-            primary: "Stop & Save",
-            secondary: "Keep Recording",
+            PromptContent(
+                title: occurrence.title,
+                when: "ended",
+                fallbackDetail: "Still recording · \(elapsedText)",
+                primary: "Stop & Save",
+                primarySymbol: "stop.fill",
+                secondary: "Keep Recording"
+            ),
             onPrimary: { [weak self] in Task { await self?.stopRecording() } },
             onSecondary: {}
         )
@@ -80,6 +115,10 @@ final class AppController: ObservableObject {
         guard active == nil, !isBusy else { return }
         isBusy = true
         defer { isBusy = false }
+        if pendingOffer != nil {
+            prompt.close()
+            pendingOffer = nil
+        }
 
         let title: String
         if let ruleID, let rule = store.rule(id: ruleID) {

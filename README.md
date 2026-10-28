@@ -21,8 +21,11 @@ on-device, nothing uploaded.
 
 - **Meetings from your calendar.** In Settings, pick the meetings to record (for example "Psychotherapist").
   Any calendar event whose title contains that text counts.
-- **Asks at the right moments.** A small card appears when a chosen meeting starts ("Start Recording"), and
-  again when it is scheduled to end ("Stop & Save"). It never records without a click.
+- **Asks at the right moments.** A card appears in the top-right corner of the screen you're using when a
+  chosen meeting starts: its title, "now", who's in it, **Ignore** or **Start Recording** (the chevron offers
+  "Remind Me in 5 Minutes" and "Open in Calendar"). Again when it is scheduled to end ("Stop & Save"). While
+  a card waits, the menu-bar icon reads "Record?". The menu says when the next card will appear. It never
+  records without a click.
 - **Mic + call audio.** Records your microphone and the other participants (system audio via
   ScreenCaptureKit) into one `.m4a`. Falls back to mic only if screen-audio access is off.
 - **Numbered names.** `Psychotherapist #2 — 2026-10-27 08.00.m4a`, numbered per meeting, saved to

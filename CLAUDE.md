@@ -37,8 +37,10 @@ Mac only on purpose: iPhone/iPad can't capture another app's call audio. See the
 ## Design
 
 Minimal, monochrome, Apple-like. The menu reads like a native menu: rows highlight on hover, secondary text
-for dates, red only for "recording" and "Now". The prompt card is a non-activating floating panel in the
-top-right corner so it never steals focus from the meeting app. Settings live in their own window.
+for dates, red only for "recording" and "Now". The prompt card is a non-activating panel at status-bar level in the
+top-right corner of the screen under the pointer, so it never steals focus and Stage Manager or a second
+display can't hide it. Its look: light grey card with a soft multicolour rim, bold title + grey "now",
+attendee initials, grey "Ignore" and a black primary button with a red record dot. Settings live in their own window.
 
 ## Method (installed skills)
 
@@ -60,7 +62,8 @@ scratchpad.
 | Feature | Mac | iPhone / iPad |
 |---|---|---|
 | Record mic + call audio | ScreenCaptureKit + mic | n/a: iOS can't capture other apps' audio |
-| Prompt at meeting start / end | floating card | n/a |
+| Prompt at meeting start / end (attendees, snooze 5 min) | floating card on the pointer's screen | n/a |
+| Next reminder time, "Record?" while a card waits | menu, menu-bar icon | n/a |
 | Meetings with next date, open in Calendar | menu-bar menu | n/a |
 
 ## Debugging

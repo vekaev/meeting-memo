@@ -16,6 +16,9 @@ struct MeetingMemoApp: App {
             if controller.active != nil {
                 Label(controller.elapsedText, systemImage: "record.circle.fill")
                     .labelStyle(.titleAndIcon)
+            } else if controller.pendingOffer != nil {
+                Label("Record?", systemImage: "record.circle")
+                    .labelStyle(.titleAndIcon)
             } else {
                 Image(systemName: "waveform.circle")
             }

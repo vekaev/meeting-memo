@@ -97,9 +97,34 @@ struct MenuView: View {
                 Label("Quick recording", systemImage: "mic")
             }
             .buttonStyle(MenuRowButtonStyle())
+            reminderNote.padding(.top, 4)
             calendarNotes.padding(.top, 4)
         }
         .disabled(controller.isBusy)
+    }
+
+    /// The card waiting for an answer, or when the next one will appear, so a reminder is never a surprise.
+    @ViewBuilder
+    private var reminderNote: some View {
+        if let pending = controller.pendingOffer, let ruleID = pending.ruleID {
+            Button {
+                Task { await controller.startRecording(ruleID: ruleID, occurrence: pending) }
+            } label: {
+                Label("“\(pending.title)” is on: start recording", systemImage: "bell.badge")
+                    .lineLimit(1).truncationMode(.middle)
+            }
+            .buttonStyle(MenuRowButtonStyle())
+        } else if let next = nextReminder {
+            let at = next.start.addingTimeInterval(-TimeInterval(store.settings.leadMinutes * 60))
+            Label("Will ask to record “\(next.title)” \(ReminderTime.text(at))", systemImage: "bell")
+                .font(.caption).foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+    }
+
+    /// The next meeting the card will appear for.
+    private var nextReminder: Occurrence? {
+        calendar.upcoming.first { $0.ruleID != nil && !store.isHandled($0.id) }
     }
 
     @ViewBuilder
@@ -140,6 +165,17 @@ struct MenuView: View {
         return calendar.upcoming.first {
             $0.ruleID == rule.id && $0.start.addingTimeInterval(-15 * 60) <= now && now < $0.end
         }
+    }
+}
+
+/// "today at 1:30 PM", "tomorrow at 8:00 AM", "Mon, Nov 2 at 8:00 AM".
+enum ReminderTime {
+    static func text(_ date: Date) -> String {
+        let time = date.formatted(date: .omitted, time: .shortened)
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) { return "today at \(time)" }
+        if calendar.isDateInTomorrow(date) { return "tomorrow at \(time)" }
+        return "\(date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())) at \(time)"
     }
 }
 
