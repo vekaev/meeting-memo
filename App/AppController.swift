@@ -22,18 +22,36 @@ struct ActiveRecording {
     var askedOnCallEnd = false
 }
 
+/// The last saved recording, for the saved card and the menu.
+struct SavedRecording {
+    let title: String
+    let audio: URL
+    let video: URL?
+    let ruleID: UUID?
+    /// The number it took, or nil for a call recording named after the call.
+    let number: Int?
+    let minutes: Int
+    var note: URL?
+    var transcribing = false
+    var transcriptFailed = false
+
+    var files: [URL] { [audio, video, note].compactMap { $0 } }
+}
+
 @MainActor
 final class AppController: ObservableObject {
     let store = Store()
     lazy var calendar = CalendarWatcher(store: store)
     private let prompt = PromptPanel()
     private let calls = CallWatcher()
+    private let transcriber = Transcriber()
 
     @Published private(set) var active: ActiveRecording?
     @Published private(set) var isBusy = false
     @Published var lastMessage: String?
     /// The most recently saved recording, shown in the menu so it can be revealed in Finder.
     @Published private(set) var lastSaved: URL?
+    @Published private(set) var saved: SavedRecording?
     @Published private(set) var elapsedText = ""
     @Published private(set) var launchAtLogin = SMAppService.mainApp.status == .enabled
     /// A meeting whose "Start Recording?" card is waiting for an answer; the menu-bar icon shows it.
@@ -54,6 +72,7 @@ final class AppController: ObservableObject {
         calls.onCallStarted = { [weak self] call in self?.callStarted(call) }
         calls.onCallEnded = { [weak self] call in self?.callEnded(call) }
         calls.start()
+        transcriber.onFinished = { [weak self] job, note in self?.transcriptFinished(job, note: note) }
     }
 
     // MARK: Prompts
@@ -287,14 +306,92 @@ final class AppController: ObservableObject {
         stopElapsedTimer()
         do {
             try await recording.session.stop()
+            let number = recording.numbered ? store.currentNumber(ruleID: recording.ruleID) : nil
             if recording.numbered { store.commitNumber(ruleID: recording.ruleID) }
             lastSaved = recording.videoURL ?? recording.url
             lastMessage = nil
+            let video = recording.videoURL.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
+            var done = SavedRecording(title: recording.title, audio: recording.url, video: video,
+                                      ruleID: recording.ruleID, number: number,
+                                      minutes: max(1, Int(Date().timeIntervalSince(recording.startedAt) / 60)))
+            if store.settings.transcribe, Transcriber.uvPath != nil {
+                done.transcribing = true
+                transcriber.enqueue(Transcriber.Job(
+                    audio: recording.url, note: Transcriber.noteURL(for: recording.url), title: recording.title,
+                    meeting: recording.occurrence?.title ?? recording.call?.title,
+                    recorded: recording.startedAt, minutes: done.minutes))
+            }
+            saved = done
+            showSavedCard(done)
         } catch {
             lastMessage = "Recording failed: \(error.localizedDescription)"
             NSLog("MeetingMemo: stop failed: \(error)")
         }
         active = nil
+    }
+
+    // MARK: Saved
+
+    /// "Saved" with Delete, Open and Show in Finder; closes by itself.
+    private func showSavedCard(_ recording: SavedRecording) {
+        var parts = ["\(recording.minutes) min", recording.video == nil ? "audio" : "audio + screen"]
+        if recording.transcribing { parts.append("transcribing on this Mac") }
+        prompt.show(
+            PromptContent(
+                title: recording.title.components(separatedBy: " — ").first ?? recording.title,
+                when: "saved",
+                fallbackDetail: parts.joined(separator: " · "),
+                primary: "Show in Finder",
+                primarySymbol: "",
+                secondary: "Delete",
+                middle: ("Open", { [weak self] in self?.openSaved() }),
+                secondaryConfirm: "Move to Trash?",
+                autoClose: 10
+            ),
+            onPrimary: { [weak self] in self?.revealLastSaved() },
+            onSecondary: { [weak self] in self?.deleteSaved() }
+        )
+    }
+
+    /// Opens the video if there is one, otherwise the audio.
+    func openSaved() {
+        guard let recording = saved else { return }
+        NSWorkspace.shared.open(recording.video ?? recording.audio)
+    }
+
+    func openTranscript() {
+        if let note = saved?.note { NSWorkspace.shared.open(note) }
+    }
+
+    /// Moves the recording, its video and transcript to the Trash (recoverable), and gives its number back.
+    func deleteSaved() {
+        guard let recording = saved else { return }
+        transcriber.cancel(audio: recording.audio)
+        let note = Transcriber.noteURL(for: recording.audio)
+        for url in Set(recording.files + [note]) where FileManager.default.fileExists(atPath: url.path) {
+            do {
+                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+            } catch {
+                NSLog("MeetingMemo: cannot move \(url.lastPathComponent) to the Trash: \(error)")
+            }
+        }
+        if let number = recording.number { store.uncommitNumber(ruleID: recording.ruleID, number: number) }
+        saved = nil
+        lastSaved = nil
+        lastMessage = "Moved “\(recording.title)” to the Trash."
+    }
+
+    private func transcriptFinished(_ job: Transcriber.Job, note: URL?) {
+        guard var recording = saved, recording.audio == job.audio else { return }
+        // A recording deleted while it was being transcribed may still leave a note behind.
+        guard FileManager.default.fileExists(atPath: recording.audio.path) else {
+            if let note { try? FileManager.default.trashItem(at: note, resultingItemURL: nil) }
+            return
+        }
+        recording.transcribing = false
+        recording.note = note
+        recording.transcriptFailed = note == nil
+        saved = recording
     }
 
     /// The capture session, whether it goes through ScreenCaptureKit, and the screen video it will save.

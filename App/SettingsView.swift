@@ -221,6 +221,13 @@ private struct RecordingPage: View {
                 Toggle("", isOn: $store.settings.recordCallAudio).labelsHidden().toggleStyle(.switch).controlSize(.small)
             }
         }
+        SectionTitle("Transcripts")
+        Card {
+            SettingRow("Transcribe on this Mac", detail: transcribeDetail) {
+                Toggle("", isOn: $store.settings.transcribe).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                    .disabled(Transcriber.uvPath == nil)
+            }
+        }
         SectionTitle("Screen")
         Card {
             SettingRow("Record the screen in quick recordings",
@@ -249,6 +256,14 @@ private struct RecordingPage: View {
                     .fixedSize()
             }
         }
+    }
+}
+
+private extension RecordingPage {
+    var transcribeDetail: String {
+        guard Transcriber.uvPath != nil else { return "Needs uv (astral.sh/uv) to run Whisper on this Mac." }
+        let model = Transcriber.modelIsCached ? "" : " The Whisper model (1.6 GB) downloads once on first use."
+        return "Whisper on Apple Silicon; the audio never leaves this Mac. Saves a .md next to the recording." + model
     }
 }
 

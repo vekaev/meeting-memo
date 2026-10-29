@@ -18,12 +18,20 @@ struct PromptContent {
     /// The Screen switch on the card; nil hides it.
     var screen: Bool? = nil
     var onScreenChange: (Bool) -> Void = { _ in }
+    /// A grey button just before the primary one ("Open").
+    var middle: (title: String, action: () -> Void)? = nil
+    /// When set, the secondary button asks first: one click shows this in red, the second confirms.
+    /// Esc then only closes the card.
+    var secondaryConfirm: String? = nil
+    /// Closes by itself after this many seconds, unless the pointer is on the card.
+    var autoClose: TimeInterval? = nil
 }
 
 /// A floating card in the top-right corner that does not steal focus from the meeting app.
 @MainActor
 final class PromptPanel {
     private var panel: NSPanel?
+    private var closeTask: Task<Void, Never>?
     var isShowing: Bool { panel != nil }
 
     func show(_ content: PromptContent, onPrimary: @escaping () -> Void, onSecondary: @escaping () -> Void) {
@@ -32,10 +40,19 @@ final class PromptPanel {
         content.options = content.options.map { option in
             (option.title, { [weak self] in self?.close(); option.action() })
         }
+        content.middle = content.middle.map { middle in
+            (middle.title, { [weak self] in self?.close(); middle.action() })
+        }
+        let autoClose = content.autoClose
         let view = PromptView(
             content: content,
             onPrimary: { [weak self] in self?.close(); onPrimary() },
-            onSecondary: { [weak self] in self?.close(); onSecondary() }
+            onSecondary: { [weak self] in self?.close(); onSecondary() },
+            onClose: { [weak self] in self?.close() },
+            onHold: { [weak self] holding in
+                // Pointer on the card or a pending confirmation: stay; otherwise count down again.
+                if holding { self?.closeTask?.cancel() } else if let autoClose { self?.scheduleClose(after: autoClose) }
+            }
         )
         let hosting = NSHostingView(rootView: view)
         hosting.frame.size = hosting.fittingSize
@@ -60,13 +77,26 @@ final class PromptPanel {
                                          y: frame.maxY - panel.frame.height - 12))
         }
         panel.orderFrontRegardless()
-        NSSound(named: "Glass")?.play()
+        if autoClose == nil { NSSound(named: "Glass")?.play() }
         self.panel = panel
+        if let autoClose { scheduleClose(after: autoClose) }
     }
 
     func close() {
+        closeTask?.cancel()
+        closeTask = nil
         panel?.orderOut(nil)
         panel = nil
+    }
+
+    private func scheduleClose(after seconds: TimeInterval) {
+        closeTask?.cancel()
+        let shown = panel
+        closeTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled, let self, self.panel === shown else { return }
+            self.close()
+        }
     }
 }
 
@@ -74,12 +104,19 @@ private struct PromptView: View {
     let content: PromptContent
     let onPrimary: () -> Void
     let onSecondary: () -> Void
+    let onClose: () -> Void
+    let onHold: (Bool) -> Void
     @State private var screen: Bool
+    @State private var confirming = false
+    @State private var hovering = false
 
-    init(content: PromptContent, onPrimary: @escaping () -> Void, onSecondary: @escaping () -> Void) {
+    init(content: PromptContent, onPrimary: @escaping () -> Void, onSecondary: @escaping () -> Void,
+         onClose: @escaping () -> Void, onHold: @escaping (Bool) -> Void) {
         self.content = content
         self.onPrimary = onPrimary
         self.onSecondary = onSecondary
+        self.onClose = onClose
+        self.onHold = onHold
         _screen = State(initialValue: content.screen ?? false)
     }
 
@@ -139,14 +176,32 @@ private struct PromptView: View {
             .font(.system(size: 14))
             .foregroundStyle(.secondary)
 
-            HStack {
-                Button(content.secondary, action: onSecondary)
+            HStack(spacing: 8) {
+                if let confirm = content.secondaryConfirm {
+                    Button {
+                        if confirming { onSecondary() } else { confirming = true }
+                    } label: {
+                        Text(confirming ? confirm : content.secondary)
+                            .foregroundStyle(confirming ? Color.red : Color.primary)
+                    }
                     .buttonStyle(CardButtonStyle(prominent: false))
-                    .keyboardShortcut(.cancelAction)
+                    // Esc closes the card without deleting anything.
+                    Button("", action: onClose).keyboardShortcut(.cancelAction).hidden().frame(width: 0)
+                } else {
+                    Button(content.secondary, action: onSecondary)
+                        .buttonStyle(CardButtonStyle(prominent: false))
+                        .keyboardShortcut(.cancelAction)
+                }
                 Spacer()
+                if let middle = content.middle, !confirming {
+                    Button(middle.title, action: middle.action)
+                        .buttonStyle(CardButtonStyle(prominent: false))
+                }
                 Button(action: onPrimary) {
                     HStack(spacing: 7) {
-                        Image(systemName: content.primarySymbol).foregroundStyle(.red)
+                        if !content.primarySymbol.isEmpty {
+                            Image(systemName: content.primarySymbol).foregroundStyle(.red)
+                        }
                         Text(content.primary)
                     }
                 }
@@ -164,6 +219,8 @@ private struct PromptView: View {
                 .strokeBorder(CardColors.rim, lineWidth: 1.5)
         )
         .padding(2)
+        .onHover { hovering = $0; onHold(hovering || confirming) }
+        .onChange(of: confirming) { onHold(hovering || confirming) }
     }
 }
 
@@ -251,6 +308,8 @@ private struct CardButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .lineLimit(1)
+            .fixedSize()
             .font(.system(size: 15, weight: prominent ? .semibold : .medium))
             .foregroundStyle(prominent ? Color(nsColor: .windowBackgroundColor) : .primary)
             .padding(.horizontal, prominent ? 18 : 16)

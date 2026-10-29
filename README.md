@@ -39,6 +39,14 @@ on-device, nothing uploaded.
   is remembered for that meeting. Quick recordings and unmatched calls follow Settings → Recording. The
   video (`.mov`, HEVC, 30 fps, with call audio and mic) is saved next to the `.m4a`, from the main display
   or the one you pick (falling back to the main one if it's unplugged). The app's own card stays out of it.
+- **Saved, with a quick way out.** After you stop, a small card says "Saved" with the length and what was
+  kept: **Show in Finder**, **Open**, or **Delete** (a second click confirms; it moves the audio, video and
+  transcript to the Trash and gives the number back). It closes by itself after 10 s, or stays while the
+  pointer is on it.
+- **Transcripts that stay on your Mac.** Each recording is transcribed with Whisper large-v3-turbo on
+  Apple Silicon (MLX, run through `uv`) and saved as a `.md` with the same name next to it: title, meeting,
+  date, length, language and a `[mm:ss]` transcript. The audio never leaves the Mac; once the model is
+  downloaded (1.6 GB, once) the run is fully offline. Turn it off in Settings → Recording.
 - **Numbered names.** `Psychotherapist #2 — 2026-10-27 08.00.m4a`, numbered per meeting, saved to
   `~/Documents/Meeting Recordings` (or a folder you choose).
 - **Menu bar.** A small waveform; while recording, a dot and a fixed-width timer that doesn't nudge the

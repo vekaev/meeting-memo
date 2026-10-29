@@ -50,6 +50,8 @@ struct AppSettings: Codable {
     var screenDisplayID: UInt32? = nil
     /// Offer to record when a call starts in Zoom, Meet, Teams…, and to stop when it ends.
     var askOnCalls: Bool = true
+    /// Transcribe each recording on this Mac and save a .md next to it.
+    var transcribe: Bool = true
 
     init() {}
 
@@ -67,6 +69,7 @@ struct AppSettings: Codable {
         recordScreen = try c.decodeIfPresent(Bool.self, forKey: .recordScreen) ?? d.recordScreen
         screenDisplayID = try c.decodeIfPresent(UInt32.self, forKey: .screenDisplayID)
         askOnCalls = try c.decodeIfPresent(Bool.self, forKey: .askOnCalls) ?? d.askOnCalls
+        transcribe = try c.decodeIfPresent(Bool.self, forKey: .transcribe) ?? d.transcribe
     }
 
     static var defaultOutputFolder: String {
@@ -113,6 +116,20 @@ final class Store: ObservableObject {
             settings.rules[index].nextNumber += 1
         } else if ruleID == nil {
             settings.quickRecordingNumber += 1
+        }
+    }
+
+    /// The number a recording would take now: the meeting's next number, or the quick-recording one.
+    func currentNumber(ruleID: UUID?) -> Int {
+        ruleID.flatMap(rule(id:))?.nextNumber ?? settings.quickRecordingNumber
+    }
+
+    /// A deleted recording gives its number back, if nothing was numbered after it.
+    func uncommitNumber(ruleID: UUID?, number: Int) {
+        if let ruleID, let index = settings.rules.firstIndex(where: { $0.id == ruleID }) {
+            if settings.rules[index].nextNumber == number + 1 { settings.rules[index].nextNumber = number }
+        } else if ruleID == nil, settings.quickRecordingNumber == number + 1 {
+            settings.quickRecordingNumber = number
         }
     }
 

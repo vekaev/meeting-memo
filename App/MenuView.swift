@@ -24,6 +24,21 @@ struct MenuView: View {
                         .buttonStyle(MenuRowButtonStyle())
                         .help("Show in Finder")
                     }
+                    if let recording = controller.saved {
+                        if recording.transcribing {
+                            Text("Transcribing on this Mac…")
+                                .font(.caption).foregroundStyle(.secondary)
+                        } else if recording.note != nil {
+                            Button { controller.openTranscript() } label: {
+                                Text("Open transcript").font(.caption).foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(MenuRowButtonStyle())
+                        } else if recording.transcriptFailed {
+                            Text("Transcription failed: see transcribe.log in Application Support/MeetingMemo.")
+                                .font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                     if let message = controller.lastMessage {
                         Text(message)
                             .font(.caption)
