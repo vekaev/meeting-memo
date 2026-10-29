@@ -47,6 +47,7 @@ final class SystemAndMicCapture: NSObject, CaptureSession, SCStreamOutput, SCStr
     private var micTrack: TrackWriter?
     private var failedSources = Set<String>()
     private var videoTempURL: URL?
+    private var recordingOutput: SCRecordingOutput?
     private var videoFinished: CheckedContinuation<Void, Never>?
     private var videoDone = false
 
@@ -103,7 +104,9 @@ final class SystemAndMicCapture: NSObject, CaptureSession, SCStreamOutput, SCStr
             recording.outputURL = url
             recording.outputFileType = .mov
             recording.videoCodecType = .hevc
-            try stream.addRecordingOutput(SCRecordingOutput(configuration: recording, delegate: self))
+            let output = SCRecordingOutput(configuration: recording, delegate: self)
+            try stream.addRecordingOutput(output)
+            recordingOutput = output
             videoTempURL = url
         }
         try await stream.startCapture()
@@ -114,13 +117,15 @@ final class SystemAndMicCapture: NSObject, CaptureSession, SCStreamOutput, SCStr
         if let stream {
             try? await stream.stopCapture()
         }
-        stream = nil
         // Drain the sample queue before finishing the writers.
         let tracks: [TrackWriter] = queue.sync { [systemTrack, micTrack].compactMap { $0 } }
         for track in tracks { await track.finish() }
         try await Mixer.mix(tracks.filter(\.hasSamples), to: finalURL)
         for track in tracks { try? FileManager.default.removeItem(at: track.url) }
         try await saveVideo()
+        // Released only now: the .mov is finalized after stopCapture returns.
+        stream = nil
+        recordingOutput = nil
     }
 
     /// Waits (briefly) for the .mov to be finalized, then moves it next to the audio.
