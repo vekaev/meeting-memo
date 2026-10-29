@@ -12,6 +12,8 @@ struct Rule: Codable, Identifiable, Hashable {
     var enabled: Bool = true
     /// Also save a screen video for this meeting.
     var recordScreen: Bool = false
+    /// The other person's name in transcripts, e.g. "Therapist"; empty means "Speaker 2".
+    var speakerName: String = ""
 
     func matches(_ eventTitle: String) -> Bool {
         let needle = matchText.trimmingCharacters(in: .whitespaces)
@@ -29,6 +31,7 @@ extension Rule {
         nextNumber = try c.decodeIfPresent(Int.self, forKey: .nextNumber) ?? 1
         enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
         recordScreen = try c.decodeIfPresent(Bool.self, forKey: .recordScreen) ?? false
+        speakerName = try c.decodeIfPresent(String.self, forKey: .speakerName) ?? ""
     }
 }
 
@@ -52,6 +55,10 @@ struct AppSettings: Codable {
     var askOnCalls: Bool = true
     /// Transcribe each recording on this Mac and save a .md next to it.
     var transcribe: Bool = true
+    /// Have Claude clean up each transcript (the text only) and name the speakers.
+    var cleanWithClaude: Bool = true
+    /// The owner's name in transcripts.
+    var ownerName: String = AppSettings.defaultOwnerName
 
     init() {}
 
@@ -70,6 +77,13 @@ struct AppSettings: Codable {
         screenDisplayID = try c.decodeIfPresent(UInt32.self, forKey: .screenDisplayID)
         askOnCalls = try c.decodeIfPresent(Bool.self, forKey: .askOnCalls) ?? d.askOnCalls
         transcribe = try c.decodeIfPresent(Bool.self, forKey: .transcribe) ?? d.transcribe
+        cleanWithClaude = try c.decodeIfPresent(Bool.self, forKey: .cleanWithClaude) ?? d.cleanWithClaude
+        ownerName = try c.decodeIfPresent(String.self, forKey: .ownerName) ?? d.ownerName
+    }
+
+    /// The first name from the macOS account, e.g. "Yevhenii".
+    static var defaultOwnerName: String {
+        NSFullUserName().split(separator: " ").first.map(String.init) ?? "Me"
     }
 
     static var defaultOutputFolder: String {

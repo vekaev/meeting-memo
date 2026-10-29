@@ -33,6 +33,8 @@ struct SavedRecording {
     let minutes: Int
     var note: URL?
     var transcribing = false
+    /// Transcribed on this Mac; Claude is cleaning up the text.
+    var cleaning = false
     var transcriptFailed = false
 
     var files: [URL] { [audio, video, note].compactMap { $0 } }
@@ -73,6 +75,10 @@ final class AppController: ObservableObject {
         calls.onCallEnded = { [weak self] call in self?.callEnded(call) }
         calls.start()
         transcriber.onFinished = { [weak self] job, note in self?.transcriptFinished(job, note: note) }
+        transcriber.onCleaning = { [weak self] job in
+            guard let self, self.saved?.audio == job.audio else { return }
+            self.saved?.cleaning = true
+        }
     }
 
     // MARK: Prompts
@@ -316,10 +322,13 @@ final class AppController: ObservableObject {
                                       minutes: max(1, Int(Date().timeIntervalSince(recording.startedAt) / 60)))
             if store.settings.transcribe, Transcriber.uvPath != nil {
                 done.transcribing = true
+                let speaker = recording.ruleID.flatMap(store.rule(id:))?.speakerName.trimmingCharacters(in: .whitespaces)
                 transcriber.enqueue(Transcriber.Job(
                     audio: recording.url, note: Transcriber.noteURL(for: recording.url), title: recording.title,
                     meeting: recording.occurrence?.title ?? recording.call?.title,
-                    recorded: recording.startedAt, minutes: done.minutes))
+                    recorded: recording.startedAt, minutes: done.minutes,
+                    me: store.settings.ownerName, other: speaker?.isEmpty == false ? speaker : nil,
+                    clean: store.settings.cleanWithClaude && Transcriber.claudePath != nil))
             }
             saved = done
             showSavedCard(done)
@@ -389,6 +398,7 @@ final class AppController: ObservableObject {
             return
         }
         recording.transcribing = false
+        recording.cleaning = false
         recording.note = note
         recording.transcriptFailed = note == nil
         saved = recording

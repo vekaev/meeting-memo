@@ -43,10 +43,13 @@ on-device, nothing uploaded.
   kept: **Show in Finder**, **Open**, or **Delete** (a second click confirms; it moves the audio, video and
   transcript to the Trash and gives the number back). It closes by itself after 10 s, or stays while the
   pointer is on it.
-- **Transcripts that stay on your Mac.** Each recording is transcribed with Whisper large-v3-turbo on
-  Apple Silicon (MLX, run through `uv`) and saved as a `.md` with the same name next to it: title, meeting,
-  date, length, language and a `[mm:ss]` transcript. The audio never leaves the Mac; once the model is
-  downloaded (1.6 GB, once) the run is fully offline. Turn it off in Settings → Recording.
+- **Transcripts with who said what.** Each recording is transcribed on the Mac with Whisper
+  large-v3-turbo (MLX, run through `uv`), and sherpa-onnx tells the voices apart (pyannote segmentation +
+  WeSpeaker embedding, 32 MB, fetched once). Saved as a `.md` with the same name next to the recording.
+  The audio never leaves the Mac. Then, if "Clean up with Claude" is on, the `claude` CLI gets the
+  transcript's text only, fixes punctuation and misheard words and names the speakers (you, and the
+  meeting's "Speaker name", e.g. Therapist): the clean version sits above the raw one. Both are in
+  Settings → Recording.
 - **Numbered names.** `Psychotherapist #2 — 2026-10-27 08.00.m4a`, numbered per meeting, saved to
   `~/Documents/Meeting Recordings` (or a folder you choose).
 - **Menu bar.** A small waveform; while recording, a dot and a fixed-width timer that doesn't nudge the

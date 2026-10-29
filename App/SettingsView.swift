@@ -177,6 +177,11 @@ private struct MeetingRow: View {
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 240)
                     }
+                    SettingRow("Speaker name", detail: "The other person in transcripts, e.g. Therapist.") {
+                        TextField("", text: $rule.speakerName, prompt: Text("Speaker 2"))
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 240)
+                    }
                     SettingRow("Record the screen", detail: "Saves a .mov next to the audio. You can also switch it on the card.") {
                         Toggle("", isOn: $rule.recordScreen).labelsHidden().toggleStyle(.switch).controlSize(.small)
                     }
@@ -227,6 +232,17 @@ private struct RecordingPage: View {
                 Toggle("", isOn: $store.settings.transcribe).labelsHidden().toggleStyle(.switch).controlSize(.small)
                     .disabled(Transcriber.uvPath == nil)
             }
+            Divider().padding(.leading, 14)
+            SettingRow("Clean up with Claude", detail: cleanDetail) {
+                Toggle("", isOn: $store.settings.cleanWithClaude).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                    .disabled(Transcriber.claudePath == nil || !store.settings.transcribe)
+            }
+            Divider().padding(.leading, 14)
+            SettingRow("Your name", detail: "How you appear in transcripts. Each meeting can name the other speaker.") {
+                TextField("", text: $store.settings.ownerName, prompt: Text("Me"))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 160)
+            }
         }
         SectionTitle("Screen")
         Card {
@@ -263,7 +279,14 @@ private extension RecordingPage {
     var transcribeDetail: String {
         guard Transcriber.uvPath != nil else { return "Needs uv (astral.sh/uv) to run Whisper on this Mac." }
         let model = Transcriber.modelIsCached ? "" : " The Whisper model (1.6 GB) downloads once on first use."
-        return "Whisper on Apple Silicon; the audio never leaves this Mac. Saves a .md next to the recording." + model
+        return "Whisper and speaker detection on Apple Silicon; the audio never leaves this Mac. "
+            + "Saves a .md next to the recording." + model
+    }
+
+    var cleanDetail: String {
+        guard Transcriber.claudePath != nil else { return "Needs the claude command-line tool (Claude Code)." }
+        return "Fixes punctuation and misheard words, and names who's speaking. Sends the transcript's text, "
+            + "never the audio, to Anthropic through the claude app."
     }
 }
 

@@ -72,7 +72,8 @@ scratchpad.
 | Screen video (.mov next to the .m4a) per meeting, switch on the card, chosen display or main | `SCRecordingOutput` on the same stream | n/a |
 | Prompt at meeting start / end (attendees, snooze 5 min) | floating card on the pointer's screen | n/a |
 | Saved card (Show in Finder, Open, Delete → Trash) | prompt panel, auto-closes | n/a |
-| Local transcript (.md next to the recording) | `Core/transcribe.py` (MLX Whisper via `uv`), `Transcriber.swift` | n/a |
+| Local transcript with speakers (.md next to the recording) | `Core/transcribe.py` (MLX Whisper + sherpa-onnx via `uv`), `Transcriber.swift` | n/a |
+| Clean transcript, speakers named (text to Claude) | `Core/clean.py` → `claude -p` (no tools, no MCP, no settings) | n/a |
 | Card on joining / leaving a call (Zoom, Meet, Teams…) | CoreAudio per-process mic use + window titles (`CallWatcher.swift`) | n/a |
 | Next reminder time, "Record?" while a card waits | menu, menu-bar icon | n/a |
 | Meetings with next date, open in Calendar | menu-bar menu | n/a |
@@ -81,8 +82,12 @@ scratchpad.
 
 - Transcription: `uv run --script` on the bundled `transcribe.py` (afconvert → 16 kHz mono → Whisper
   large-v3-turbo on MLX), `HF_HUB_OFFLINE=1` once the model is cached. Its output goes to
-  `~/Library/Application Support/MeetingMemo/transcribe.log`. Test it on speech made with `say`, never on the
-  owner's recordings.
+  `~/Library/Application Support/MeetingMemo/transcribe.log`. Diarization models live in
+  `…/MeetingMemo/models`; clustering threshold 0.5 (exact on a two-voice `say` clip). Test on speech made
+  with `say` (two voices: Samantha + Daniel), never on the owner's recordings.
+- Cleanup: `clean.py <note.md> --me Yevhenii --other Therapist` cleans in ~2500-word parts; the first part
+  returns `NAMES: Speaker 1 = …` and later parts keep it. Only the text goes to Claude; it is the owner's
+  choice (Settings → "Clean up with Claude").
 
 - Errors go to `NSLog("MeetingMemo: …")`; in this shell `log` is shadowed:
   `/usr/bin/log show --last 5m --style compact --predicate 'eventMessage CONTAINS "MeetingMemo:"'`.

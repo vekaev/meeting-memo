@@ -25,7 +25,10 @@ struct MenuView: View {
                         .help("Show in Finder")
                     }
                     if let recording = controller.saved {
-                        if recording.transcribing {
+                        if recording.cleaning {
+                            Text("Cleaning up the transcript with Claude…")
+                                .font(.caption).foregroundStyle(.secondary)
+                        } else if recording.transcribing {
                             Text("Transcribing on this Mac…")
                                 .font(.caption).foregroundStyle(.secondary)
                         } else if recording.note != nil {
