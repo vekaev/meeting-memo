@@ -34,7 +34,8 @@ on-device, nothing uploaded.
   The app's own card stays out of the video.
 - **Numbered names.** `Psychotherapist #2 — 2026-10-27 08.00.m4a`, numbered per meeting, saved to
   `~/Documents/Meeting Recordings` (or a folder you choose).
-- **Menu bar.** Each meeting with its next date and time, soonest first: click the name to start recording,
+- **Menu bar.** A small waveform; while recording, a dot and a fixed-width timer that doesn't nudge the
+  icons next to it. The menu lists each meeting with its next date and time, soonest first: click the name to start recording,
   click the date to open the event in Calendar. Quick recording for anything else. The last saved file is
   one click from Finder.
 - Launch at login, optional lead time before the meeting, "Now · until 9:00 AM" while a meeting is on.

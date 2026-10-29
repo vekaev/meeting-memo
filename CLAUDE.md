@@ -36,8 +36,10 @@ Mac only on purpose: iPhone/iPad can't capture another app's call audio. See the
 
 ## Design
 
-Minimal, monochrome, Apple-like. The menu reads like a native menu: rows highlight on hover, secondary text
-for dates, red only for "recording" and "Now". The prompt card is a non-activating panel at status-bar level in the
+Minimal, monochrome, Apple-like. The menu-bar item is one template image drawn in `MenuBarLabel.swift`
+(five-bar waveform, the app icon's mark; dot + monospaced timer while recording, width reserved so it never
+changes). The menu reads like a native menu: few icons, rows highlight on hover, a thin ring before each row that
+starts a recording (red dot under the pointer), secondary text for dates, red only for "recording" and "Now". The prompt card is a non-activating panel at status-bar level in the
 top-right corner of the screen under the pointer, so it never steals focus and Stage Manager or a second
 display can't hide it. Its look: light grey card with a soft multicolour rim, bold title + grey "now",
 attendee initials, grey "Ignore" and a black primary button with a red record dot. Settings live in their own window.

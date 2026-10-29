@@ -17,11 +17,7 @@ struct MenuView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     if let saved = controller.lastSaved {
                         Button { controller.revealLastSaved() } label: {
-                            HStack(spacing: 6) {
-                                Text("Saved “\(saved.lastPathComponent)”").lineLimit(1).truncationMode(.middle)
-                                Spacer(minLength: 4)
-                                Image(systemName: "magnifyingglass")
-                            }
+                            Text("Saved “\(saved.lastPathComponent)”").lineLimit(1).truncationMode(.middle)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         }
@@ -54,7 +50,7 @@ struct MenuView: View {
     private func recordingSection(_ recording: ActiveRecording) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Image(systemName: "record.circle.fill").foregroundStyle(.red)
+                Circle().fill(.red).frame(width: 8, height: 8)
                 Text("Recording").font(.headline)
                 Spacer()
                 Text(controller.elapsedText).monospacedDigit().foregroundStyle(.secondary)
@@ -92,12 +88,12 @@ struct MenuView: View {
                     onOpen: { calendar.openInCalendar($0) }
                 )
             }
-            Button {
-                Task { await controller.startRecording(ruleID: nil) }
-            } label: {
-                Label("Quick recording", systemImage: "mic")
-            }
-            .buttonStyle(MenuRowButtonStyle())
+            MeetingRow(
+                title: "Quick recording",
+                next: nil,
+                onStart: { Task { await controller.startRecording(ruleID: nil) } },
+                onOpen: { _ in }
+            )
             reminderNote.padding(.top, 4)
             calendarNotes.padding(.top, 4)
         }
@@ -111,13 +107,13 @@ struct MenuView: View {
             Button {
                 Task { await controller.startRecording(ruleID: ruleID, occurrence: pending) }
             } label: {
-                Label("“\(pending.title)” is on: start recording", systemImage: "bell.badge")
+                Text("“\(pending.title)” is on: start recording")
                     .lineLimit(1).truncationMode(.middle)
             }
             .buttonStyle(MenuRowButtonStyle())
         } else if let next = nextReminder {
             let at = next.start.addingTimeInterval(-TimeInterval(store.settings.leadMinutes * 60))
-            Label("Will ask to record “\(next.title)” \(ReminderTime.text(at))", systemImage: "bell")
+            Text("Will ask to record “\(next.title)” \(ReminderTime.text(at))")
                 .font(.caption).foregroundStyle(.secondary)
                 .lineLimit(2)
         }
@@ -214,8 +210,10 @@ private struct MeetingRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Button(action: onStart) {
-                Label(title, systemImage: "record.circle")
-                    .lineLimit(1)
+                HStack(spacing: 8) {
+                    RecordMark(isActive: isHovered && isEnabled)
+                    Text(title).lineLimit(1)
+                }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
             }
@@ -234,6 +232,20 @@ private struct MeetingRow: View {
         .menuRowHighlight(isHovered && isEnabled)
         .opacity(isEnabled ? 1 : 0.5)
         .onHover { isHovered = $0 }
+    }
+}
+
+/// A thin ring before each row that can start a recording; it becomes a red dot under the pointer.
+private struct RecordMark: View {
+    let isActive: Bool
+
+    var body: some View {
+        ZStack {
+            Circle().strokeBorder(.secondary, lineWidth: 1.25).opacity(isActive ? 0 : 1)
+            Circle().fill(.red).padding(1).opacity(isActive ? 1 : 0)
+        }
+        .frame(width: 10, height: 10)
+        .animation(.easeOut(duration: 0.12), value: isActive)
     }
 }
 

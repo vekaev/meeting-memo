@@ -14,13 +14,11 @@ struct MeetingMemoApp: App {
                 .environmentObject(controller.calendar)
         } label: {
             if controller.active != nil {
-                Label(controller.elapsedText, systemImage: "record.circle.fill")
-                    .labelStyle(.titleAndIcon)
+                Image(nsImage: MenuBarLabel.recording(controller.elapsedText.isEmpty ? "00:00" : controller.elapsedText))
             } else if controller.pendingOffer != nil {
-                Label("Record?", systemImage: "record.circle")
-                    .labelStyle(.titleAndIcon)
+                Image(nsImage: MenuBarLabel.pending)
             } else {
-                Image(systemName: "waveform.circle")
+                Image(nsImage: MenuBarLabel.idle)
             }
         }
         .menuBarExtraStyle(.window)
