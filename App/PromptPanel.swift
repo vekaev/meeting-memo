@@ -15,6 +15,9 @@ struct PromptContent {
     var secondary: String
     /// Extra actions under the chevron.
     var options: [(title: String, action: () -> Void)] = []
+    /// The Screen switch on the card; nil hides it.
+    var screen: Bool? = nil
+    var onScreenChange: (Bool) -> Void = { _ in }
 }
 
 /// A floating card in the top-right corner that does not steal focus from the meeting app.
@@ -71,6 +74,14 @@ private struct PromptView: View {
     let content: PromptContent
     let onPrimary: () -> Void
     let onSecondary: () -> Void
+    @State private var screen: Bool
+
+    init(content: PromptContent, onPrimary: @escaping () -> Void, onSecondary: @escaping () -> Void) {
+        self.content = content
+        self.onPrimary = onPrimary
+        self.onSecondary = onSecondary
+        _screen = State(initialValue: content.screen ?? false)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -113,6 +124,16 @@ private struct PromptView: View {
                     Avatars(names: content.people)
                     Text(PeopleText.summary(content.people))
                         .lineLimit(1).truncationMode(.tail)
+                }
+                if content.screen != nil {
+                    Spacer(minLength: 8)
+                    Toggle(isOn: $screen) {
+                        Text("Screen").font(.system(size: 13))
+                    }
+                    .toggleStyle(CardSwitchStyle())
+                    .fixedSize()
+                    .help("Also save a screen video")
+                    .onChange(of: screen) { content.onScreenChange(screen) }
                 }
             }
             .font(.system(size: 14))
@@ -199,6 +220,30 @@ private enum CardColors {
         colors: ([.blue, .purple, .pink, .orange, .yellow, .green, .teal, .blue] as [Color]).map { $0.opacity(0.55) },
         center: .center
     )
+}
+
+/// A small switch that reads clearly on a card that is never the key window
+/// (the system switch turns grey there, on or off).
+private struct CardSwitchStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button { configuration.isOn.toggle() } label: {
+            HStack(spacing: 7) {
+                configuration.label
+                Capsule()
+                    .fill(configuration.isOn ? Color.primary : Color.primary.opacity(0.14))
+                    .frame(width: 28, height: 16)
+                    .overlay(alignment: configuration.isOn ? .trailing : .leading) {
+                        Circle()
+                            .fill(configuration.isOn ? CardColors.background : Color.white)
+                            .shadow(color: .black.opacity(0.15), radius: 0.5, y: 0.5)
+                            .padding(2)
+                    }
+                    .animation(.easeOut(duration: 0.12), value: configuration.isOn)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
 }
 
 private struct CardButtonStyle: ButtonStyle {

@@ -44,7 +44,10 @@ top-right corner of the screen under the pointer, so it never steals focus and S
 display can't hide it. Its look: light grey card with a soft multicolour rim, bold title + grey "now",
 attendee initials, grey "Ignore" and a black primary button with a red record dot. Call cards say where
 ("on Zoom", "on Google Meet") and ask once per call; only known call apps count, so Siri, dictation or a
-notetaker using the mic never trigger one. Settings live in their own window.
+notetaker using the mic never trigger one. The card's Screen switch is drawn by hand (`CardSwitchStyle`): the
+system switch turns grey on a non-key panel. Settings live in their own window, Granola-like: hidden title bar,
+a sidebar (Meetings, Recording, Reminders, General), rounded groups of rows with a title, a grey description and
+the control on the right; a meeting is a one-line summary that expands to edit in place.
 
 ## Method (installed skills)
 
@@ -66,7 +69,7 @@ scratchpad.
 | Feature | Mac | iPhone / iPad |
 |---|---|---|
 | Record mic + call audio | ScreenCaptureKit + mic | n/a: iOS can't capture other apps' audio |
-| Screen video (.mov next to the .m4a), chosen display or main | `SCRecordingOutput` on the same stream | n/a |
+| Screen video (.mov next to the .m4a) per meeting, switch on the card, chosen display or main | `SCRecordingOutput` on the same stream | n/a |
 | Prompt at meeting start / end (attendees, snooze 5 min) | floating card on the pointer's screen | n/a |
 | Card on joining / leaving a call (Zoom, Meet, Teams…) | CoreAudio per-process mic use + window titles (`CallWatcher.swift`) | n/a |
 | Next reminder time, "Record?" while a card waits | menu, menu-bar icon | n/a |

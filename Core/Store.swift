@@ -10,10 +10,25 @@ struct Rule: Codable, Identifiable, Hashable {
     /// Number given to the next saved recording of this series.
     var nextNumber: Int = 1
     var enabled: Bool = true
+    /// Also save a screen video for this meeting.
+    var recordScreen: Bool = false
 
     func matches(_ eventTitle: String) -> Bool {
         let needle = matchText.trimmingCharacters(in: .whitespaces)
         return enabled && !needle.isEmpty && eventTitle.localizedCaseInsensitiveContains(needle)
+    }
+}
+
+extension Rule {
+    /// Keys missing from an older settings file keep their defaults.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try c.decode(String.self, forKey: .name)
+        matchText = try c.decode(String.self, forKey: .matchText)
+        nextNumber = try c.decodeIfPresent(Int.self, forKey: .nextNumber) ?? 1
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        recordScreen = try c.decodeIfPresent(Bool.self, forKey: .recordScreen) ?? false
     }
 }
 
@@ -28,7 +43,8 @@ struct AppSettings: Codable {
     var quickRecordingNumber: Int = 1
     /// Calendar occurrences already prompted for, so each one asks only once.
     var handledOccurrences: [String: Date] = [:]
-    /// Also save a screen video (.mov) next to the audio.
+    /// Also save a screen video (.mov) for quick recordings and calls that match no meeting;
+    /// each meeting has its own switch.
     var recordScreen: Bool = false
     /// The display to record; nil means the main display.
     var screenDisplayID: UInt32? = nil

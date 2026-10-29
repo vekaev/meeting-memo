@@ -34,10 +34,11 @@ on-device, nothing uploaded.
   When the call ends while recording, it asks to stop. Turn it off in Settings.
 - **Mic + call audio.** Records your microphone and the other participants (system audio via
   ScreenCaptureKit) into one `.m4a`. Falls back to mic only if screen-audio access is off.
-- **Screen too, if you want.** Turn on "Record the screen too" in Settings and each recording also saves a
-  screen video (`.mov`, HEVC, 30 fps, with call audio and mic) next to the `.m4a`. Pick the display under
-  "Screen"; it records the main display by default, and falls back to it if the chosen one is unplugged.
-  The app's own card stays out of the video.
+- **Screen too, per meeting.** Each meeting has its own "Record the screen" switch (say, on for a lecture,
+  off for therapy), and the card has a Screen switch to change it right before you start; the card's choice
+  is remembered for that meeting. Quick recordings and unmatched calls follow Settings → Recording. The
+  video (`.mov`, HEVC, 30 fps, with call audio and mic) is saved next to the `.m4a`, from the main display
+  or the one you pick (falling back to the main one if it's unplugged). The app's own card stays out of it.
 - **Numbered names.** `Psychotherapist #2 — 2026-10-27 08.00.m4a`, numbered per meeting, saved to
   `~/Documents/Meeting Recordings` (or a folder you choose).
 - **Menu bar.** A small waveform; while recording, a dot and a fixed-width timer that doesn't nudge the

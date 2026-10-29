@@ -42,6 +42,8 @@ final class AppController: ObservableObject {
     @Published private(set) var pendingCall: Call?
     /// What the call card's Start Recording does, so the menu can do the same.
     private var startPendingCall: (() -> Void)?
+    /// The Screen switch on the card showing now.
+    private var cardScreen = false
 
     private var elapsedTimer: Timer?
 
@@ -70,6 +72,7 @@ final class AppController: ObservableObject {
         }
         pendingOffer = occurrence
         pendingCall = nil
+        cardScreen = rule.recordScreen
         prompt.show(
             PromptContent(
                 title: occurrence.title,
@@ -79,11 +82,14 @@ final class AppController: ObservableObject {
                 primary: "Start Recording",
                 primarySymbol: "record.circle.fill",
                 secondary: "Ignore",
-                options: options
+                options: options,
+                screen: cardScreen,
+                onScreenChange: { [weak self] in self?.setCardScreen($0, ruleID: rule.id) }
             ),
             onPrimary: { [weak self] in
-                self?.pendingOffer = nil
-                Task { await self?.startRecording(ruleID: rule.id, occurrence: occurrence) }
+                guard let self else { return }
+                self.pendingOffer = nil
+                Task { await self.startRecording(ruleID: rule.id, occurrence: occurrence, screen: self.cardScreen) }
             },
             onSecondary: { [weak self] in self?.pendingOffer = nil }
         )
@@ -152,8 +158,11 @@ final class AppController: ObservableObject {
         let fileTitle = rule.map { Naming.title(name: $0.name, number: $0.nextNumber, date: occurrence?.start ?? Date()) }
             ?? Naming.title(name: quickName, date: Date())
         let start = { [weak self] (ruleID: UUID?, occurrence: Occurrence?, name: String?) in
-            self?.pendingCall = nil
-            Task { await self?.startRecording(ruleID: ruleID, occurrence: occurrence, name: name) }
+            guard let self else { return }
+            self.pendingCall = nil
+            // The card's switch applies to its own guess; another choice from the chevron uses that one's setting.
+            let screen = ruleID == rule?.id ? self.cardScreen : nil
+            Task { await self.startRecording(ruleID: ruleID, occurrence: occurrence, name: name, screen: screen) }
         }
         // The chevron offers the other choices, in case the guess is wrong.
         var options: [(title: String, action: () -> Void)] = []
@@ -164,6 +173,7 @@ final class AppController: ObservableObject {
             options.append(("Record as \(other.name)", { start(other.id, nil, nil) }))
         }
         pendingCall = call
+        cardScreen = rule?.recordScreen ?? store.settings.recordScreen
         startPendingCall = { start(rule?.id, occurrence, rule == nil ? quickName : nil) }
         prompt.show(
             PromptContent(
@@ -174,11 +184,21 @@ final class AppController: ObservableObject {
                 primary: "Start Recording",
                 primarySymbol: "record.circle.fill",
                 secondary: "Ignore",
-                options: options
+                options: options,
+                screen: cardScreen,
+                onScreenChange: { [weak self] in self?.setCardScreen($0, ruleID: rule?.id) }
             ),
             onPrimary: { start(rule?.id, occurrence, rule == nil ? quickName : nil) },
             onSecondary: { [weak self] in self?.pendingCall = nil }
         )
+    }
+
+    /// The card's Screen switch; for a meeting it is remembered as that meeting's setting.
+    private func setCardScreen(_ on: Bool, ruleID: UUID?) {
+        cardScreen = on
+        if let ruleID, let index = store.settings.rules.firstIndex(where: { $0.id == ruleID }) {
+            store.settings.rules[index].recordScreen = on
+        }
     }
 
     /// The menu's "start recording" row for a waiting call card.
@@ -214,7 +234,8 @@ final class AppController: ObservableObject {
     // MARK: Recording
 
     /// Start recording for a rule, or a quick recording when `ruleID` is nil (named `name` when given).
-    func startRecording(ruleID: UUID?, occurrence: Occurrence? = nil, name: String? = nil) async {
+    /// `screen` overrides the meeting's (or, for a quick recording, the default) screen setting.
+    func startRecording(ruleID: UUID?, occurrence: Occurrence? = nil, name: String? = nil, screen: Bool? = nil) async {
         guard active == nil, !isBusy else { return }
         isBusy = true
         defer { isBusy = false }
@@ -237,7 +258,8 @@ final class AppController: ObservableObject {
             let folder = store.outputFolderURL
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let url = Naming.uniqueFileURL(in: folder, title: title)
-            let (session, withScreenCapture, video) = try await makeSession(finalURL: url)
+            let wantsScreen = screen ?? ruleID.flatMap(store.rule(id:))?.recordScreen ?? store.settings.recordScreen
+            let (session, withScreenCapture, video) = try await makeSession(finalURL: url, screen: wantsScreen)
             let withCallAudio = withScreenCapture && store.settings.recordCallAudio
             // Manual and quick recordings still follow the meeting on the calendar, so we can ask to stop at its end.
             let meeting = occurrence ?? calendar.meetingInProgress(at: Date())
@@ -246,7 +268,7 @@ final class AppController: ObservableObject {
                                      videoURL: video?.finalURL,
                                      screenName: video.map { screenName(for: $0.displayID) },
                                      numbered: ruleID != nil || name == nil, call: calls.current)
-            let wantsCapture = store.settings.recordCallAudio || store.settings.recordScreen
+            let wantsCapture = store.settings.recordCallAudio || wantsScreen
             lastMessage = withScreenCapture || !wantsCapture
                 ? nil
                 : "Recording mic only — allow Screen & System Audio Recording to include call audio and the screen."
@@ -276,13 +298,13 @@ final class AppController: ObservableObject {
     }
 
     /// The capture session, whether it goes through ScreenCaptureKit, and the screen video it will save.
-    private func makeSession(finalURL: URL) async throws -> (CaptureSession, Bool, ScreenVideo?) {
+    private func makeSession(finalURL: URL, screen: Bool) async throws -> (CaptureSession, Bool, ScreenVideo?) {
         let settings = store.settings
-        if settings.recordCallAudio || settings.recordScreen {
+        if settings.recordCallAudio || screen {
             let tempDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("MeetingMemo/In Progress", isDirectory: true)
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-            let video = settings.recordScreen ? ScreenVideo(displayID: chosenDisplayID, finalURL: videoURL(for: finalURL)) : nil
+            let video = screen ? ScreenVideo(displayID: chosenDisplayID, finalURL: videoURL(for: finalURL)) : nil
             let capture = SystemAndMicCapture(finalURL: finalURL, tempDir: tempDir,
                                               callAudio: settings.recordCallAudio, screen: video)
             do {

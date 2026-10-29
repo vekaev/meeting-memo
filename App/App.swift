@@ -23,12 +23,13 @@ struct MeetingMemoApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Window("MeetingMemo Settings", id: "settings") {
+        Window("Meeting Memo Settings", id: "settings") {
             SettingsView()
                 .environmentObject(controller)
                 .environmentObject(controller.store)
                 .environmentObject(controller.calendar)
         }
+        .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
     }
 }

@@ -82,6 +82,7 @@ struct MenuView: View {
                 MeetingRow(
                     title: "\(rule.name) #\(rule.nextNumber)",
                     next: next,
+                    screen: rule.recordScreen,
                     onStart: {
                         Task { await controller.startRecording(ruleID: rule.id, occurrence: currentOccurrence(for: rule)) }
                     },
@@ -91,6 +92,7 @@ struct MenuView: View {
             MeetingRow(
                 title: "Quick recording",
                 next: nil,
+                screen: store.settings.recordScreen,
                 onStart: { Task { await controller.startRecording(ruleID: nil) } },
                 onOpen: { _ in }
             )
@@ -207,6 +209,8 @@ private struct MeetingTime: View {
 private struct MeetingRow: View {
     let title: String
     let next: Occurrence?
+    /// Shows a small display glyph when this recording also saves the screen.
+    var screen = false
     let onStart: () -> Void
     let onOpen: (Occurrence) -> Void
     @Environment(\.isEnabled) private var isEnabled
@@ -219,6 +223,12 @@ private struct MeetingRow: View {
                 HStack(spacing: 8) {
                     RecordMark(isActive: isHovered && isEnabled)
                     Text(title).lineLimit(1)
+                    if screen {
+                        Image(systemName: "display")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                            .help("Records the screen too")
+                    }
                 }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())

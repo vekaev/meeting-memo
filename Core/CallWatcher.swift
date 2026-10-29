@@ -100,10 +100,19 @@ enum MicUsers {
         var processes = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
         guard AudioObjectGetPropertyData(system, &address, 0, nil, &size, &processes) == noErr else { return nil }
         for process in processes where value(process, kAudioProcessPropertyIsRunningInput, UInt32(0)) != 0 {
-            let bundleID = value(process, kAudioProcessPropertyBundleID, "" as CFString) as String
+            let bundleID = bundleID(process)
             if let app = CallApp.matching(bundleID: bundleID) { return app }
         }
         return nil
+    }
+
+    private static func bundleID(_ process: AudioObjectID) -> String {
+        var address = AudioObjectPropertyAddress(mSelector: kAudioProcessPropertyBundleID, mScope: kAudioObjectPropertyScopeGlobal,
+                                                 mElement: kAudioObjectPropertyElementMain)
+        var result: Unmanaged<CFString>?
+        var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        guard AudioObjectGetPropertyData(process, &address, 0, nil, &size, &result) == noErr, let result else { return "" }
+        return result.takeRetainedValue() as String
     }
 
     private static func value<T>(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector, _ fallback: T) -> T {
