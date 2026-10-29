@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import ScreenCaptureKit
 
@@ -23,43 +24,88 @@ protocol CaptureSession: AnyObject {
 
 // MARK: - Mic + call audio (ScreenCaptureKit)
 
+/// What to do with the screen while recording.
+struct ScreenVideo {
+    /// The display to record; nil or a disconnected display means the main one.
+    var displayID: CGDirectDisplayID?
+    /// Where the .mov goes once the recording stops.
+    var finalURL: URL
+}
+
 /// Captures system audio and the microphone through one SCStream, so both share
 /// one clock. Each source is written to its own temp file; on stop they are
-/// aligned by first timestamp and mixed into a single .m4a.
-final class SystemAndMicCapture: NSObject, CaptureSession, SCStreamOutput, SCStreamDelegate {
+/// aligned by first timestamp and mixed into a single .m4a. With `screen`, the
+/// same stream also records the display to a .mov (video, call audio and mic).
+final class SystemAndMicCapture: NSObject, CaptureSession, SCStreamOutput, SCStreamDelegate, SCRecordingOutputDelegate {
     private let finalURL: URL
     private let tempDir: URL
+    private let callAudio: Bool
+    private let screen: ScreenVideo?
     private let queue = DispatchQueue(label: "MeetingMemo.capture")
     private var stream: SCStream?
     private var systemTrack: TrackWriter?
     private var micTrack: TrackWriter?
     private var failedSources = Set<String>()
+    private var videoTempURL: URL?
+    private var videoFinished: CheckedContinuation<Void, Never>?
+    private var videoDone = false
 
-    init(finalURL: URL, tempDir: URL) {
+    init(finalURL: URL, tempDir: URL, callAudio: Bool = true, screen: ScreenVideo? = nil) {
         self.finalURL = finalURL
         self.tempDir = tempDir
+        self.callAudio = callAudio
+        self.screen = screen
+    }
+
+    /// The display's name as macOS shows it, e.g. "Studio Display".
+    @MainActor static func displayName(_ id: CGDirectDisplayID) -> String? {
+        NSScreen.screens.first { $0.displayID == id }?.localizedName
     }
 
     func start() async throws {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-        guard let display = content.displays.first else { throw RecorderError.noDisplay }
-        let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
+        let wanted = screen?.displayID ?? CGMainDisplayID()
+        guard let display = content.displays.first(where: { $0.displayID == wanted })
+            ?? content.displays.first(where: { $0.displayID == CGMainDisplayID() })
+            ?? content.displays.first else { throw RecorderError.noDisplay }
+        // Keep the app's own prompt card out of the video.
+        let ownApp = content.applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier }
+        let filter = SCContentFilter(display: display, excludingApplications: ownApp, exceptingWindows: [])
 
         let config = SCStreamConfiguration()
-        config.capturesAudio = true
+        config.capturesAudio = callAudio
         config.excludesCurrentProcessAudio = true
         config.captureMicrophone = true
         config.sampleRate = 48_000
         config.channelCount = 2
-        // Video is required by SCStream but unused: keep it tiny and slow.
-        config.width = 2
-        config.height = 2
-        config.minimumFrameInterval = CMTime(value: 1, timescale: 1)
+        if screen != nil {
+            // The display's size in points: sharp enough to read, a fraction of the Retina file size.
+            config.width = display.width
+            config.height = display.height
+            config.minimumFrameInterval = CMTime(value: 1, timescale: 30)
+            config.showsCursor = true
+        } else {
+            // Video is required by SCStream but unused: keep it tiny and slow.
+            config.width = 2
+            config.height = 2
+            config.minimumFrameInterval = CMTime(value: 1, timescale: 1)
+        }
 
         let stream = SCStream(filter: filter, configuration: config, delegate: self)
         try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
-        try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: queue)
+        if callAudio {
+            try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: queue)
+        }
         try stream.addStreamOutput(self, type: .microphone, sampleHandlerQueue: queue)
+        if screen != nil {
+            let url = tempDir.appendingPathComponent("screen-\(UUID().uuidString).mov")
+            let recording = SCRecordingOutputConfiguration()
+            recording.outputURL = url
+            recording.outputFileType = .mov
+            recording.videoCodecType = .hevc
+            try stream.addRecordingOutput(SCRecordingOutput(configuration: recording, delegate: self))
+            videoTempURL = url
+        }
         try await stream.startCapture()
         self.stream = stream
     }
@@ -74,6 +120,38 @@ final class SystemAndMicCapture: NSObject, CaptureSession, SCStreamOutput, SCStr
         for track in tracks { await track.finish() }
         try await Mixer.mix(tracks.filter(\.hasSamples), to: finalURL)
         for track in tracks { try? FileManager.default.removeItem(at: track.url) }
+        try await saveVideo()
+    }
+
+    /// Waits (briefly) for the .mov to be finalized, then moves it next to the audio.
+    private func saveVideo() async throws {
+        guard let screen, let temp = videoTempURL else { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async {
+                if self.videoDone { return continuation.resume() }
+                self.videoFinished = continuation
+                self.queue.asyncAfter(deadline: .now() + 10) { self.finishVideo() }
+            }
+        }
+        guard FileManager.default.fileExists(atPath: temp.path) else {
+            throw RecorderError.exportFailed("the screen video was not written")
+        }
+        try FileManager.default.moveItem(at: temp, to: screen.finalURL)
+    }
+
+    func recordingOutputDidFinishRecording(_ recordingOutput: SCRecordingOutput) {
+        queue.async { self.finishVideo() }
+    }
+
+    func recordingOutput(_ recordingOutput: SCRecordingOutput, didFailWithError error: Error) {
+        NSLog("MeetingMemo: screen recording failed: \(error)")
+        queue.async { self.finishVideo() }
+    }
+
+    private func finishVideo() {
+        videoDone = true
+        videoFinished?.resume()
+        videoFinished = nil
     }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
@@ -196,5 +274,11 @@ final class MicOnlyCapture: NSObject, CaptureSession {
     func stop() async throws {
         recorder?.stop()
         recorder = nil
+    }
+}
+
+extension NSScreen {
+    var displayID: CGDirectDisplayID? {
+        (deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
     }
 }

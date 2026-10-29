@@ -28,6 +28,27 @@ struct AppSettings: Codable {
     var quickRecordingNumber: Int = 1
     /// Calendar occurrences already prompted for, so each one asks only once.
     var handledOccurrences: [String: Date] = [:]
+    /// Also save a screen video (.mov) next to the audio.
+    var recordScreen: Bool = false
+    /// The display to record; nil means the main display.
+    var screenDisplayID: UInt32? = nil
+
+    init() {}
+
+    /// Keys missing from an older settings file keep their defaults instead of resetting everything.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = AppSettings()
+        rules = try c.decodeIfPresent([Rule].self, forKey: .rules) ?? d.rules
+        outputFolder = try c.decodeIfPresent(String.self, forKey: .outputFolder) ?? d.outputFolder
+        leadMinutes = try c.decodeIfPresent(Int.self, forKey: .leadMinutes) ?? d.leadMinutes
+        askToStopAtEnd = try c.decodeIfPresent(Bool.self, forKey: .askToStopAtEnd) ?? d.askToStopAtEnd
+        recordCallAudio = try c.decodeIfPresent(Bool.self, forKey: .recordCallAudio) ?? d.recordCallAudio
+        quickRecordingNumber = try c.decodeIfPresent(Int.self, forKey: .quickRecordingNumber) ?? d.quickRecordingNumber
+        handledOccurrences = try c.decodeIfPresent([String: Date].self, forKey: .handledOccurrences) ?? d.handledOccurrences
+        recordScreen = try c.decodeIfPresent(Bool.self, forKey: .recordScreen) ?? d.recordScreen
+        screenDisplayID = try c.decodeIfPresent(UInt32.self, forKey: .screenDisplayID)
+    }
 
     static var defaultOutputFolder: String {
         FileManager.default.homeDirectoryForCurrentUser

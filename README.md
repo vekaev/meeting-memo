@@ -28,6 +28,10 @@ on-device, nothing uploaded.
   records without a click.
 - **Mic + call audio.** Records your microphone and the other participants (system audio via
   ScreenCaptureKit) into one `.m4a`. Falls back to mic only if screen-audio access is off.
+- **Screen too, if you want.** Turn on "Record the screen too" in Settings and each recording also saves a
+  screen video (`.mov`, HEVC, 30 fps, with call audio and mic) next to the `.m4a`. Pick the display under
+  "Screen"; it records the main display by default, and falls back to it if the chosen one is unplugged.
+  The app's own card stays out of the video.
 - **Numbered names.** `Psychotherapist #2 — 2026-10-27 08.00.m4a`, numbered per meeting, saved to
   `~/Documents/Meeting Recordings` (or a folder you choose).
 - **Menu bar.** Each meeting with its next date and time, soonest first: click the name to start recording,

@@ -11,6 +11,9 @@ struct ActiveRecording {
     let url: URL
     let session: CaptureSession
     let includesCallAudio: Bool
+    /// The screen video saved next to the audio, and the display it shows.
+    let videoURL: URL?
+    let screenName: String?
     var askedToStop = false
 }
 
@@ -131,14 +134,18 @@ final class AppController: ObservableObject {
             let folder = store.outputFolderURL
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let url = Naming.uniqueFileURL(in: folder, title: title)
-            let (session, withCallAudio) = try await makeSession(finalURL: url)
+            let (session, withScreenCapture, video) = try await makeSession(finalURL: url)
+            let withCallAudio = withScreenCapture && store.settings.recordCallAudio
             // Manual and quick recordings still follow the meeting on the calendar, so we can ask to stop at its end.
             let meeting = occurrence ?? calendar.meetingInProgress(at: Date())
             active = ActiveRecording(title: title, ruleID: ruleID, occurrence: meeting, startedAt: Date(),
-                                     url: url, session: session, includesCallAudio: withCallAudio)
-            lastMessage = withCallAudio || !store.settings.recordCallAudio
+                                     url: url, session: session, includesCallAudio: withCallAudio,
+                                     videoURL: video?.finalURL,
+                                     screenName: video.map { screenName(for: $0.displayID) })
+            let wantsCapture = store.settings.recordCallAudio || store.settings.recordScreen
+            lastMessage = withScreenCapture || !wantsCapture
                 ? nil
-                : "Recording mic only — allow Screen & System Audio Recording to include call audio."
+                : "Recording mic only — allow Screen & System Audio Recording to include call audio and the screen."
             startElapsedTimer()
         } catch {
             lastMessage = "Could not start recording: \(error.localizedDescription)"
@@ -155,7 +162,7 @@ final class AppController: ObservableObject {
         do {
             try await recording.session.stop()
             store.commitNumber(ruleID: recording.ruleID)
-            lastSaved = recording.url
+            lastSaved = recording.videoURL ?? recording.url
             lastMessage = nil
         } catch {
             lastMessage = "Recording failed: \(error.localizedDescription)"
@@ -164,22 +171,46 @@ final class AppController: ObservableObject {
         active = nil
     }
 
-    private func makeSession(finalURL: URL) async throws -> (CaptureSession, Bool) {
-        if store.settings.recordCallAudio {
+    /// The capture session, whether it goes through ScreenCaptureKit, and the screen video it will save.
+    private func makeSession(finalURL: URL) async throws -> (CaptureSession, Bool, ScreenVideo?) {
+        let settings = store.settings
+        if settings.recordCallAudio || settings.recordScreen {
             let tempDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("MeetingMemo/In Progress", isDirectory: true)
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-            let capture = SystemAndMicCapture(finalURL: finalURL, tempDir: tempDir)
+            let video = settings.recordScreen ? ScreenVideo(displayID: chosenDisplayID, finalURL: videoURL(for: finalURL)) : nil
+            let capture = SystemAndMicCapture(finalURL: finalURL, tempDir: tempDir,
+                                              callAudio: settings.recordCallAudio, screen: video)
             do {
                 try await capture.start()
-                return (capture, true)
+                return (capture, true, video)
             } catch {
-                NSLog("MeetingMemo: call audio unavailable, falling back to mic only: \(error)")
+                NSLog("MeetingMemo: screen capture unavailable, falling back to mic only: \(error)")
             }
         }
         let mic = MicOnlyCapture(finalURL: finalURL)
         try await mic.start()
-        return (mic, false)
+        return (mic, false, nil)
+    }
+
+    /// The chosen display while it is connected, otherwise the main one.
+    private var chosenDisplayID: CGDirectDisplayID {
+        if let id = store.settings.screenDisplayID, NSScreen.screens.contains(where: { $0.displayID == id }) {
+            return id
+        }
+        return CGMainDisplayID()
+    }
+
+    private func screenName(for id: CGDirectDisplayID?) -> String {
+        id.flatMap(SystemAndMicCapture.displayName) ?? "Main display"
+    }
+
+    /// "Therapy #12 — 2026-10-20 08.00.mov" next to the .m4a.
+    private func videoURL(for audioURL: URL) -> URL {
+        let sibling = audioURL.deletingPathExtension().appendingPathExtension("mov")
+        guard FileManager.default.fileExists(atPath: sibling.path) else { return sibling }
+        return Naming.uniqueFileURL(in: audioURL.deletingLastPathComponent(),
+                                    title: audioURL.deletingPathExtension().lastPathComponent, ext: "mov")
     }
 
     private func startElapsedTimer() {

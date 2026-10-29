@@ -56,6 +56,16 @@ struct SettingsView: View {
                     Text("5 minutes before").tag(5)
                 }
                 Toggle("Record call audio (other participants)", isOn: $store.settings.recordCallAudio)
+                Toggle("Record the screen too (saves a .mov next to the audio)", isOn: $store.settings.recordScreen)
+                Picker("Screen", selection: $store.settings.screenDisplayID) {
+                    Text("Main display").tag(UInt32?.none)
+                    ForEach(NSScreen.screens, id: \.self) { screen in
+                        if let id = screen.displayID {
+                            Text(screen.localizedName).tag(UInt32?.some(id))
+                        }
+                    }
+                }
+                .disabled(!store.settings.recordScreen)
                 Toggle("Ask to stop when the meeting is scheduled to end", isOn: $store.settings.askToStopAtEnd)
                 Stepper("Next quick recording: #\(store.settings.quickRecordingNumber)",
                         value: $store.settings.quickRecordingNumber, in: 1...9999)

@@ -62,6 +62,7 @@ scratchpad.
 | Feature | Mac | iPhone / iPad |
 |---|---|---|
 | Record mic + call audio | ScreenCaptureKit + mic | n/a: iOS can't capture other apps' audio |
+| Screen video (.mov next to the .m4a), chosen display or main | `SCRecordingOutput` on the same stream | n/a |
 | Prompt at meeting start / end (attendees, snooze 5 min) | floating card on the pointer's screen | n/a |
 | Next reminder time, "Record?" while a card waits | menu, menu-bar icon | n/a |
 | Meetings with next date, open in Calendar | menu-bar menu | n/a |

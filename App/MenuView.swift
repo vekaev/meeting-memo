@@ -60,7 +60,8 @@ struct MenuView: View {
                 Text(controller.elapsedText).monospacedDigit().foregroundStyle(.secondary)
             }
             Text(recording.title).font(.callout).lineLimit(2)
-            Text(recording.includesCallAudio ? "Mic + call audio" : "Mic only")
+            Text([recording.includesCallAudio ? "Mic + call audio" : "Mic only",
+                  recording.screenName.map { "screen: \($0)" }].compactMap { $0 }.joined(separator: " · "))
                 .font(.caption).foregroundStyle(.secondary)
             if let meeting = recording.occurrence, store.settings.askToStopAtEnd {
                 Text("Will ask to stop when “\(meeting.title)” ends at \(meeting.end.formatted(date: .omitted, time: .shortened))")
