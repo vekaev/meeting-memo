@@ -14,6 +14,8 @@ struct Rule: Codable, Identifiable, Hashable {
     var recordScreen: Bool = false
     /// The other person's name in transcripts, e.g. "Therapist"; empty means "Speaker 2".
     var speakerName: String = ""
+    /// How many people talk in this meeting; 0 lets the transcriber guess (it tends to find too many).
+    var speakers: Int = 0
 
     func matches(_ eventTitle: String) -> Bool {
         let needle = matchText.trimmingCharacters(in: .whitespaces)
@@ -32,6 +34,7 @@ extension Rule {
         enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
         recordScreen = try c.decodeIfPresent(Bool.self, forKey: .recordScreen) ?? false
         speakerName = try c.decodeIfPresent(String.self, forKey: .speakerName) ?? ""
+        speakers = try c.decodeIfPresent(Int.self, forKey: .speakers) ?? 0
     }
 }
 

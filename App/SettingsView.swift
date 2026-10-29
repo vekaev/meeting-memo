@@ -182,6 +182,14 @@ private struct MeetingRow: View {
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 240)
                     }
+                    SettingRow("People speaking", detail: "Telling the transcript how many voices to expect keeps one person from turning into several.") {
+                        Picker("", selection: $rule.speakers) {
+                            Text("Auto").tag(0)
+                            ForEach(2...6, id: \.self) { Text("\($0)").tag($0) }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                    }
                     SettingRow("Record the screen", detail: "Saves a .mov next to the audio. You can also switch it on the card.") {
                         Toggle("", isOn: $rule.recordScreen).labelsHidden().toggleStyle(.switch).controlSize(.small)
                     }

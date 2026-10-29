@@ -84,7 +84,8 @@ scratchpad.
   large-v3-turbo on MLX), `HF_HUB_OFFLINE=1` once the model is cached. Its output goes to
   `~/Library/Application Support/MeetingMemo/transcribe.log`. Diarization models live in
   `…/MeetingMemo/models`; clustering threshold 0.7 (0.5 split a real 41-min lecture into 11 voices; 0.7
-  gave 4). Short `say` clips need ≤0.5, so test speakers with `--threshold 0.5` or `--speakers 2`.
+  gave 4). Guessing still over-splits two-person talk (therapy: 6 voices at 0.7), so each meeting has
+  "People speaking" (`--speakers N`). Short `say` clips need ≤0.5: test with `--threshold 0.5` or `--speakers 2`.
   Whisper output is cached in `…/MeetingMemo/cache` (deleted with the recording), so speakers can be redone
   without transcribing again. The language is voted over 7 windows: Whisper alone decides from the first
   30 s, and an English greeting once turned a Russian session into an English translation. Test on speech

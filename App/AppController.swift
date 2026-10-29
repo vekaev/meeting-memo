@@ -322,12 +322,14 @@ final class AppController: ObservableObject {
                                       minutes: max(1, Int(Date().timeIntervalSince(recording.startedAt) / 60)))
             if store.settings.transcribe, Transcriber.uvPath != nil {
                 done.transcribing = true
-                let speaker = recording.ruleID.flatMap(store.rule(id:))?.speakerName.trimmingCharacters(in: .whitespaces)
+                let rule = recording.ruleID.flatMap(store.rule(id:))
+                let speaker = rule?.speakerName.trimmingCharacters(in: .whitespaces)
                 transcriber.enqueue(Transcriber.Job(
                     audio: recording.url, note: Transcriber.noteURL(for: recording.url), title: recording.title,
                     meeting: recording.occurrence?.title ?? recording.call?.title,
                     recorded: recording.startedAt, minutes: done.minutes,
                     me: store.settings.ownerName, other: speaker?.isEmpty == false ? speaker : nil,
+                    speakers: (rule?.speakers ?? 0) > 0 ? rule?.speakers : nil,
                     clean: store.settings.cleanWithClaude && Transcriber.claudePath != nil))
             }
             saved = done

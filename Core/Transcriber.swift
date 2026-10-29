@@ -15,6 +15,8 @@ final class Transcriber {
         /// Names for the cleanup: the owner, and the other main speaker if known.
         var me = "Me"
         var other: String?
+        /// Known number of voices; nil lets sherpa-onnx guess.
+        var speakers: Int?
         var clean = false
     }
 
@@ -96,6 +98,7 @@ final class Transcriber {
                          "--recorded", job.recorded.formatted(date: .abbreviated, time: .shortened),
                          "--minutes", "\(job.minutes) min"]
         if let meeting = job.meeting { arguments += ["--meeting", meeting] }
+        if let speakers = job.speakers { arguments += ["--speakers", "\(speakers)"] }
         launch(uv, arguments) { [weak self] ok in
             guard let self else { return }
             let note = ok && FileManager.default.fileExists(atPath: job.note.path) ? job.note : nil
