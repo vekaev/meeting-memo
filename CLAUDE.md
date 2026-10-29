@@ -42,7 +42,9 @@ changes). The menu reads like a native menu: few icons, rows highlight on hover,
 starts a recording (red dot under the pointer), secondary text for dates, red only for "recording" and "Now". The prompt card is a non-activating panel at status-bar level in the
 top-right corner of the screen under the pointer, so it never steals focus and Stage Manager or a second
 display can't hide it. Its look: light grey card with a soft multicolour rim, bold title + grey "now",
-attendee initials, grey "Ignore" and a black primary button with a red record dot. Settings live in their own window.
+attendee initials, grey "Ignore" and a black primary button with a red record dot. Call cards say where
+("on Zoom", "on Google Meet") and ask once per call; only known call apps count, so Siri, dictation or a
+notetaker using the mic never trigger one. Settings live in their own window.
 
 ## Method (installed skills)
 
@@ -66,6 +68,7 @@ scratchpad.
 | Record mic + call audio | ScreenCaptureKit + mic | n/a: iOS can't capture other apps' audio |
 | Screen video (.mov next to the .m4a), chosen display or main | `SCRecordingOutput` on the same stream | n/a |
 | Prompt at meeting start / end (attendees, snooze 5 min) | floating card on the pointer's screen | n/a |
+| Card on joining / leaving a call (Zoom, Meet, Teams…) | CoreAudio per-process mic use + window titles (`CallWatcher.swift`) | n/a |
 | Next reminder time, "Record?" while a card waits | menu, menu-bar icon | n/a |
 | Meetings with next date, open in Calendar | menu-bar menu | n/a |
 

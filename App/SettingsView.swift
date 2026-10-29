@@ -67,6 +67,7 @@ struct SettingsView: View {
                 }
                 .disabled(!store.settings.recordScreen)
                 Toggle("Ask to stop when the meeting is scheduled to end", isOn: $store.settings.askToStopAtEnd)
+                Toggle("Ask when I join or leave a call (Zoom, Meet, Teams, FaceTime…)", isOn: $store.settings.askOnCalls)
                 Stepper("Next quick recording: #\(store.settings.quickRecordingNumber)",
                         value: $store.settings.quickRecordingNumber, in: 1...9999)
             }

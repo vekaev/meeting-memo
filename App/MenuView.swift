@@ -111,6 +111,12 @@ struct MenuView: View {
                     .lineLimit(1).truncationMode(.middle)
             }
             .buttonStyle(MenuRowButtonStyle())
+        } else if let call = controller.pendingCall {
+            Button { controller.acceptPendingCall() } label: {
+                Text("Call on \(call.app): start recording")
+                    .lineLimit(1).truncationMode(.middle)
+            }
+            .buttonStyle(MenuRowButtonStyle())
         } else if let next = nextReminder {
             let at = next.start.addingTimeInterval(-TimeInterval(store.settings.leadMinutes * 60))
             Text("Will ask to record “\(next.title)” \(ReminderTime.text(at))")

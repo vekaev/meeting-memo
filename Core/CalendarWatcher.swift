@@ -131,6 +131,22 @@ final class CalendarWatcher: ObservableObject {
             .map { occurrence(for: $0, ruleID: nil) }
     }
 
+    /// The chosen meeting closest to `date`: on now, or starting or ending within `window`.
+    func nearestMeeting(to date: Date, within window: TimeInterval, ruleID: UUID? = nil) -> Occurrence? {
+        guard access == .granted else { return nil }
+        let predicate = eventStore.predicateForEvents(withStart: date.addingTimeInterval(-window - 12 * 3600),
+                                                      end: date.addingTimeInterval(window), calendars: nil)
+        return eventStore.events(matching: predicate)
+            .filter { !$0.isAllDay }
+            .compactMap { event -> (Occurrence, TimeInterval)? in
+                guard let rule = store.firstRule(matching: event.title ?? ""), ruleID == nil || rule.id == ruleID else { return nil }
+                let distance = event.startDate > date ? event.startDate.timeIntervalSince(date)
+                    : event.endDate < date ? date.timeIntervalSince(event.endDate) : 0
+                return distance <= window ? (occurrence(for: event, ruleID: rule.id), distance) : nil
+            }
+            .min { $0.1 < $1.1 }?.0
+    }
+
     /// Shows the event in Calendar.app, or just opens Calendar on its day if the event can't be addressed.
     func openInCalendar(_ occurrence: Occurrence) {
         if let id = occurrence.calendarItemID,

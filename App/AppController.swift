@@ -14,7 +14,12 @@ struct ActiveRecording {
     /// The screen video saved next to the audio, and the display it shows.
     let videoURL: URL?
     let screenName: String?
+    /// False for a call recording named after the call: it doesn't use up a quick-recording number.
+    let numbered: Bool
+    /// The call this recording overlaps, so its end can ask to stop.
+    var call: Call?
     var askedToStop = false
+    var askedOnCallEnd = false
 }
 
 @MainActor
@@ -22,6 +27,7 @@ final class AppController: ObservableObject {
     let store = Store()
     lazy var calendar = CalendarWatcher(store: store)
     private let prompt = PromptPanel()
+    private let calls = CallWatcher()
 
     @Published private(set) var active: ActiveRecording?
     @Published private(set) var isBusy = false
@@ -32,6 +38,10 @@ final class AppController: ObservableObject {
     @Published private(set) var launchAtLogin = SMAppService.mainApp.status == .enabled
     /// A meeting whose "Start Recording?" card is waiting for an answer; the menu-bar icon shows it.
     @Published private(set) var pendingOffer: Occurrence?
+    /// A call whose "Start Recording?" card is waiting for an answer.
+    @Published private(set) var pendingCall: Call?
+    /// What the call card's Start Recording does, so the menu can do the same.
+    private var startPendingCall: (() -> Void)?
 
     private var elapsedTimer: Timer?
 
@@ -39,6 +49,9 @@ final class AppController: ObservableObject {
         calendar.onOccurrenceDue = { [weak self] occurrence in self?.offerRecording(for: occurrence) }
         calendar.onTick = { [weak self] now in self?.checkMeetingEnd(now) }
         calendar.start()
+        calls.onCallStarted = { [weak self] call in self?.callStarted(call) }
+        calls.onCallEnded = { [weak self] call in self?.callEnded(call) }
+        calls.start()
     }
 
     // MARK: Prompts
@@ -56,6 +69,7 @@ final class AppController: ObservableObject {
             }))
         }
         pendingOffer = occurrence
+        pendingCall = nil
         prompt.show(
             PromptContent(
                 title: occurrence.title,
@@ -111,21 +125,110 @@ final class AppController: ObservableObject {
         )
     }
 
+    // MARK: Calls
+
+    /// A call started in Zoom, Meet, Teams…: offer to record it, even outside the meeting's scheduled time.
+    private func callStarted(_ call: Call) {
+        if var recording = active {
+            // Already recording: remember the call so its end can ask to stop.
+            recording.call = call
+            active = recording
+            return
+        }
+        guard store.settings.askOnCalls, pendingOffer == nil, !isBusy else { return }
+        let hour: TimeInterval = 3600
+        var rule = call.title.flatMap { CallTitle.rule(for: $0, in: store.settings.rules) }
+        var occurrence = rule.flatMap { calendar.nearestMeeting(to: Date(), within: hour, ruleID: $0.id) }
+        // A window that names nothing ("Zoom Meeting"): the chosen meeting on the calendar around now.
+        if rule == nil, call.title == nil, let nearest = calendar.nearestMeeting(to: Date(), within: hour) {
+            occurrence = nearest
+            rule = nearest.ruleID.flatMap(store.rule(id:))
+        }
+        offerCall(call, rule: rule, occurrence: occurrence)
+    }
+
+    private func offerCall(_ call: Call, rule: Rule?, occurrence: Occurrence?) {
+        let quickName = call.title ?? "\(call.app) call"
+        let fileTitle = rule.map { Naming.title(name: $0.name, number: $0.nextNumber, date: occurrence?.start ?? Date()) }
+            ?? Naming.title(name: quickName, date: Date())
+        let start = { [weak self] (ruleID: UUID?, occurrence: Occurrence?, name: String?) in
+            self?.pendingCall = nil
+            Task { await self?.startRecording(ruleID: ruleID, occurrence: occurrence, name: name) }
+        }
+        // The chevron offers the other choices, in case the guess is wrong.
+        var options: [(title: String, action: () -> Void)] = []
+        if rule != nil {
+            options.append(("Record as “\(quickName)”", { start(nil, nil, quickName) }))
+        }
+        for other in store.settings.rules where other.enabled && other.id != rule?.id {
+            options.append(("Record as \(other.name)", { start(other.id, nil, nil) }))
+        }
+        pendingCall = call
+        startPendingCall = { start(rule?.id, occurrence, rule == nil ? quickName : nil) }
+        prompt.show(
+            PromptContent(
+                title: occurrence?.title ?? rule?.name ?? quickName,
+                when: "on \(call.app)",
+                people: occurrence?.attendees ?? [],
+                fallbackDetail: "Saves as “\(fileTitle)”",
+                primary: "Start Recording",
+                primarySymbol: "record.circle.fill",
+                secondary: "Ignore",
+                options: options
+            ),
+            onPrimary: { start(rule?.id, occurrence, rule == nil ? quickName : nil) },
+            onSecondary: { [weak self] in self?.pendingCall = nil }
+        )
+    }
+
+    /// The menu's "start recording" row for a waiting call card.
+    func acceptPendingCall() {
+        prompt.close()
+        startPendingCall?()
+    }
+
+    /// The call is over: drop its unanswered card, or ask to stop the recording that overlaps it.
+    private func callEnded(_ call: Call) {
+        if pendingCall != nil {
+            prompt.close()
+            pendingCall = nil
+        }
+        guard store.settings.askOnCalls, var recording = active, recording.call != nil, !recording.askedOnCallEnd else { return }
+        recording.askedOnCallEnd = true
+        recording.askedToStop = true
+        active = recording
+        prompt.show(
+            PromptContent(
+                title: recording.occurrence?.title ?? recording.call?.title ?? recording.title,
+                when: "call ended",
+                fallbackDetail: "Still recording · \(elapsedText)",
+                primary: "Stop & Save",
+                primarySymbol: "stop.fill",
+                secondary: "Keep Recording"
+            ),
+            onPrimary: { [weak self] in Task { await self?.stopRecording() } },
+            onSecondary: {}
+        )
+    }
+
     // MARK: Recording
 
-    /// Start recording for a rule (or a quick recording when `ruleID` is nil).
-    func startRecording(ruleID: UUID?, occurrence: Occurrence? = nil) async {
+    /// Start recording for a rule, or a quick recording when `ruleID` is nil (named `name` when given).
+    func startRecording(ruleID: UUID?, occurrence: Occurrence? = nil, name: String? = nil) async {
         guard active == nil, !isBusy else { return }
         isBusy = true
         defer { isBusy = false }
-        if pendingOffer != nil {
+        if pendingOffer != nil || pendingCall != nil {
             prompt.close()
             pendingOffer = nil
+            pendingCall = nil
         }
 
         let title: String
         if let ruleID, let rule = store.rule(id: ruleID) {
             title = Naming.title(name: rule.name, number: rule.nextNumber, date: occurrence?.start ?? Date())
+        } else if let name {
+            title = Naming.title(name: name, date: Date())
         } else {
             title = Naming.title(name: "Recording", number: store.settings.quickRecordingNumber, date: Date())
         }
@@ -141,7 +244,8 @@ final class AppController: ObservableObject {
             active = ActiveRecording(title: title, ruleID: ruleID, occurrence: meeting, startedAt: Date(),
                                      url: url, session: session, includesCallAudio: withCallAudio,
                                      videoURL: video?.finalURL,
-                                     screenName: video.map { screenName(for: $0.displayID) })
+                                     screenName: video.map { screenName(for: $0.displayID) },
+                                     numbered: ruleID != nil || name == nil, call: calls.current)
             let wantsCapture = store.settings.recordCallAudio || store.settings.recordScreen
             lastMessage = withScreenCapture || !wantsCapture
                 ? nil
@@ -161,7 +265,7 @@ final class AppController: ObservableObject {
         stopElapsedTimer()
         do {
             try await recording.session.stop()
-            store.commitNumber(ruleID: recording.ruleID)
+            if recording.numbered { store.commitNumber(ruleID: recording.ruleID) }
             lastSaved = recording.videoURL ?? recording.url
             lastMessage = nil
         } catch {

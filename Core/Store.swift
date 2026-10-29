@@ -32,6 +32,8 @@ struct AppSettings: Codable {
     var recordScreen: Bool = false
     /// The display to record; nil means the main display.
     var screenDisplayID: UInt32? = nil
+    /// Offer to record when a call starts in Zoom, Meet, Teams…, and to stop when it ends.
+    var askOnCalls: Bool = true
 
     init() {}
 
@@ -48,6 +50,7 @@ struct AppSettings: Codable {
         handledOccurrences = try c.decodeIfPresent([String: Date].self, forKey: .handledOccurrences) ?? d.handledOccurrences
         recordScreen = try c.decodeIfPresent(Bool.self, forKey: .recordScreen) ?? d.recordScreen
         screenDisplayID = try c.decodeIfPresent(UInt32.self, forKey: .screenDisplayID)
+        askOnCalls = try c.decodeIfPresent(Bool.self, forKey: .askOnCalls) ?? d.askOnCalls
     }
 
     static var defaultOutputFolder: String {
@@ -119,6 +122,11 @@ enum Naming {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd HH.mm"
         return "\(name) #\(number) — \(formatter.string(from: date))"
+    }
+
+    /// "Weekly sync — 2026-10-20 08.00", for a call that matches no meeting.
+    static func title(name: String, date: Date) -> String {
+        title(name: name, number: 0, date: date).replacingOccurrences(of: " #0 — ", with: " — ")
     }
 
     /// A file URL in `folder` for `title`, adding " (2)", " (3)" … if the name is taken.

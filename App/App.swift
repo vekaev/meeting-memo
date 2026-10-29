@@ -15,7 +15,7 @@ struct MeetingMemoApp: App {
         } label: {
             if controller.active != nil {
                 Image(nsImage: MenuBarLabel.recording(controller.elapsedText.isEmpty ? "00:00" : controller.elapsedText))
-            } else if controller.pendingOffer != nil {
+            } else if controller.pendingOffer != nil || controller.pendingCall != nil {
                 Image(nsImage: MenuBarLabel.pending)
             } else {
                 Image(nsImage: MenuBarLabel.idle)

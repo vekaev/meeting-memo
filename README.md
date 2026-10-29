@@ -26,6 +26,12 @@ on-device, nothing uploaded.
   "Remind Me in 5 Minutes" and "Open in Calendar"). Again when it is scheduled to end ("Stop & Save"). While
   a card waits, the menu-bar icon reads "Record?". The menu says when the next card will appear. It never
   records without a click.
+- **Notices when you join a call.** When Zoom, Google Meet (or any call in Chrome, Arc, Safari, Edge,
+  Brave, Firefox), Teams, Slack, FaceTime, Webex or Discord starts using the mic, a card offers to record,
+  even outside the scheduled time. The call's window title is matched to your meetings ("Ari / Yevhenii"
+  finds "Yevhenii <> Ari"). A window that names nothing, like Zoom's, uses your meeting on the calendar
+  within about an hour. Any other call records under its own title. The chevron offers the other choices.
+  When the call ends while recording, it asks to stop. Turn it off in Settings.
 - **Mic + call audio.** Records your microphone and the other participants (system audio via
   ScreenCaptureKit) into one `.m4a`. Falls back to mic only if screen-audio access is off.
 - **Screen too, if you want.** Turn on "Record the screen too" in Settings and each recording also saves a
