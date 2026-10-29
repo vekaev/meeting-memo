@@ -384,6 +384,7 @@ final class AppController: ObservableObject {
                 NSLog("MeetingMemo: cannot move \(url.lastPathComponent) to the Trash: \(error)")
             }
         }
+        for cached in Transcriber.cachedFiles(for: recording.audio) { try? FileManager.default.removeItem(at: cached) }
         if let number = recording.number { store.uncommitNumber(ruleID: recording.ruleID, number: number) }
         saved = nil
         lastSaved = nil

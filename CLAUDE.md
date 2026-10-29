@@ -83,9 +83,14 @@ scratchpad.
 - Transcription: `uv run --script` on the bundled `transcribe.py` (afconvert → 16 kHz mono → Whisper
   large-v3-turbo on MLX), `HF_HUB_OFFLINE=1` once the model is cached. Its output goes to
   `~/Library/Application Support/MeetingMemo/transcribe.log`. Diarization models live in
-  `…/MeetingMemo/models`; clustering threshold 0.5 (exact on a two-voice `say` clip). Test on speech made
-  with `say` (two voices: Samantha + Daniel), never on the owner's recordings.
-- Cleanup: `clean.py <note.md> --me Yevhenii --other Therapist` cleans in ~2500-word parts; the first part
+  `…/MeetingMemo/models`; clustering threshold 0.7 (0.5 split a real 41-min lecture into 11 voices; 0.7
+  gave 4). Short `say` clips need ≤0.5, so test speakers with `--threshold 0.5` or `--speakers 2`.
+  Whisper output is cached in `…/MeetingMemo/cache` (deleted with the recording), so speakers can be redone
+  without transcribing again. The language is voted over 7 windows: Whisper alone decides from the first
+  30 s, and an English greeting once turned a Russian session into an English translation. Test on speech
+  made with `say`, never on the owner's recordings.
+- Cleanup: `clean.py <note.md> --me Yevhenii --other Therapist` cleans with the strongest model
+  (`claude-fable-5-1`, then `claude-opus-5-5`) in ~2500-word parts; the first part
   returns `NAMES: Speaker 1 = …` and later parts keep it. Only the text goes to Claude; it is the owner's
   choice (Settings → "Clean up with Claude").
 

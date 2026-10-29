@@ -1,6 +1,6 @@
 """Clean up a Meeting Memo transcript with Claude and put the clean version above the raw one.
 
-Usage: python3 clean.py <note.md> [--me NAME] [--other NAME] [--model sonnet] [--claude PATH] [--force]
+Usage: python3 clean.py <note.md> [--me NAME] [--other NAME] [--model ID] [--claude PATH] [--force]
 
 Only the transcript's text goes to Claude, through the `claude` CLI in print mode (no tools, no MCP
 servers, no saved session, no user settings); the audio stays on the Mac. Long transcripts are cleaned
@@ -17,6 +17,8 @@ import subprocess
 import sys
 
 PART_WORDS = 2500
+# The strongest model first; the next one if it isn't available on this account.
+MODELS = ["claude-fable-5-1", "claude-opus-5-5"]
 CLEAN = "## Clean transcript"
 RAW = "## Raw transcript (Whisper)"
 
@@ -52,14 +54,18 @@ def parts(items: list[str]) -> list[str]:
     return result
 
 
-def ask(claude: str, model: str, system: str, text: str) -> str:
-    done = subprocess.run(
-        [claude, "-p", "--model", model, "--tools", "", "--no-session-persistence", "--strict-mcp-config",
-         "--setting-sources", "", "--system-prompt", system, "--output-format", "text"],
-        input=text, capture_output=True, text=True, timeout=900)
-    if done.returncode != 0 or not done.stdout.strip():
-        raise RuntimeError(f"claude failed: {done.stderr.strip()[:300]}")
-    return done.stdout.strip()
+def ask(claude: str, models: list[str], system: str, text: str) -> tuple[str, str]:
+    """(answer, model that gave it), trying the models in order."""
+    error = ""
+    for model in models:
+        done = subprocess.run(
+            [claude, "-p", "--model", model, "--tools", "", "--no-session-persistence", "--strict-mcp-config",
+             "--setting-sources", "", "--system-prompt", system, "--output-format", "text"],
+            input=text, capture_output=True, text=True, timeout=1800)
+        if done.returncode == 0 and done.stdout.strip():
+            return done.stdout.strip(), model
+        error = (done.stderr or done.stdout).strip()[:300]
+    raise RuntimeError(f"claude failed: {error}")
 
 
 def main():
@@ -67,7 +73,7 @@ def main():
     parser.add_argument("note", type=pathlib.Path)
     parser.add_argument("--me", default="Me")
     parser.add_argument("--other", help="the other main speaker, e.g. Therapist")
-    parser.add_argument("--model", default="sonnet")
+    parser.add_argument("--model", help=f"one model to use (default: {' then '.join(MODELS)})")
     parser.add_argument("--claude", default=shutil.which("claude") or str(pathlib.Path.home() / ".local/bin/claude"))
     parser.add_argument("--force", action="store_true", help="clean again even if a clean version exists")
     args = parser.parse_args()
@@ -87,25 +93,28 @@ def main():
                  f"Name the owner \"{args.me}\" where it is clear; everyone else stays \"Speaker N\"."
     system = RULES.format(me=args.me, other_line=other_line)
 
-    cleaned, names = [], None
+    models = [args.model] if args.model else MODELS
+    cleaned, names, used = [], None, None
     chunks = parts(blocks(raw))
     for index, chunk in enumerate(chunks, 1):
         print(f"cleaning part {index}/{len(chunks)}", file=sys.stderr, flush=True)
         if names is None:
             prompt = system + "\n\nBegin your answer with one line \"NAMES: Speaker 1 = …; Speaker 2 = …\" " \
                               "listing the name you gave each speaker label, then a blank line, then the transcript."
-            answer = ask(args.claude, args.model, prompt, chunk)
+            answer, used = ask(args.claude, models, prompt, chunk)
+            models = [used]   # every part with the same model
             first, _, answer = answer.partition("\n")
             names = first.removeprefix("NAMES:").strip() if first.startswith("NAMES:") else ""
             if not first.startswith("NAMES:"):
                 answer = first + "\n" + answer
         else:
             prompt = system + (f"\n\nEarlier parts used these names; keep them: {names}." if names else "")
-            answer = ask(args.claude, args.model, prompt, chunk)
+            answer, used = ask(args.claude, models, prompt, chunk)
         cleaned.append(answer.strip())
 
     lines = header.rstrip().split("\n")
-    lines.append(f"- Cleaned by: Claude ({args.model}), from the text only")
+    lines = [line for line in lines if not line.startswith(("- Cleaned by:", "- Speakers:"))]
+    lines.append(f"- Cleaned by: Claude ({used}), from the text only")
     if names:
         lines.append(f"- Speakers: {names}")
     result = "\n".join(lines) + f"\n\n{CLEAN}\n\n" + "\n\n".join(cleaned) + f"\n\n{RAW}\n\n" + raw + "\n"

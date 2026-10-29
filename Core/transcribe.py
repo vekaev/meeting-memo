@@ -19,6 +19,7 @@ never appears.
 from __future__ import annotations
 
 import argparse
+import json
 import pathlib
 import subprocess
 import sys
@@ -32,7 +33,11 @@ MODELS = pathlib.Path.home() / "Library/Application Support/MeetingMemo/models"
 RELEASES = "https://github.com/k2-fsa/sherpa-onnx/releases/download"
 SEGMENTATION = MODELS / "sherpa-onnx-pyannote-segmentation-3-0/model.onnx"
 EMBEDDING = MODELS / "wespeaker_en_voxceleb_resnet34_LM.onnx"
+CACHE = pathlib.Path.home() / "Library/Application Support/MeetingMemo/cache"
 SAMPLE_RATE = 16000
+# Voices closer than this are one speaker. 0.5 split a 41-minute lecture into 11 voices; 0.7 gave 4,
+# with the lecturer at 82%.
+THRESHOLD = 0.7
 # A pause this long, or a change of speaker, starts a new paragraph
 PARAGRAPH_GAP = 2.0
 
@@ -59,6 +64,27 @@ def clock(seconds: float) -> str:
         else f"{seconds // 60:02d}:{seconds % 60:02d}"
 
 
+def spoken_language(audio, model_name: str) -> str | None:
+    """The language spoken across the whole recording. Whisper on its own decides from the first 30 s,
+    and a greeting in the wrong language then turns the rest into a translation."""
+    from mlx_whisper.audio import N_SAMPLES, log_mel_spectrogram, pad_or_trim
+    from mlx_whisper.decoding import detect_language
+    from mlx_whisper.load_models import load_model
+
+    model = load_model(model_name)
+    totals: dict[str, float] = {}
+    for share in (0.05, 0.2, 0.35, 0.5, 0.65, 0.8, 0.95):
+        start = int(share * max(0, len(audio) - N_SAMPLES))
+        window = audio[start:start + N_SAMPLES]
+        if len(window) < SAMPLE_RATE * 5:
+            continue
+        mel = log_mel_spectrogram(pad_or_trim(window), n_mels=model.dims.n_mels)
+        _, probabilities = detect_language(model, mel)
+        for language, probability in probabilities.items():
+            totals[language] = totals.get(language, 0) + probability
+    return max(totals, key=totals.get) if totals else None
+
+
 def ensure_models():
     """Fetch the two diarization models once (they hold no data about the recording)."""
     if not SEGMENTATION.exists():
@@ -76,7 +102,7 @@ def ensure_models():
         partial.replace(EMBEDDING)
 
 
-def diarize(audio, speakers: int | None):
+def diarize(audio, speakers: int | None, threshold: float = THRESHOLD):
     """[(start, end, speaker)] sorted by start; speakers numbered by first appearance."""
     import sherpa_onnx
 
@@ -85,7 +111,7 @@ def diarize(audio, speakers: int | None):
         segmentation=sherpa_onnx.OfflineSpeakerSegmentationModelConfig(
             pyannote=sherpa_onnx.OfflineSpeakerSegmentationPyannoteModelConfig(model=str(SEGMENTATION))),
         embedding=sherpa_onnx.SpeakerEmbeddingExtractorConfig(model=str(EMBEDDING)),
-        clustering=sherpa_onnx.FastClusteringConfig(num_clusters=speakers or -1, threshold=0.5),
+        clustering=sherpa_onnx.FastClusteringConfig(num_clusters=speakers or -1, threshold=threshold),
         min_duration_on=0.3,
         min_duration_off=0.5,
     )
@@ -146,20 +172,40 @@ def main():
     parser.add_argument("--language")
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--speakers", type=int, help="how many voices, when known (default: guess)")
+    parser.add_argument("--threshold", type=float, default=THRESHOLD, help="higher means fewer voices")
     parser.add_argument("--no-speakers", action="store_true", help="skip telling the voices apart")
     args = parser.parse_args()
 
-    import mlx_whisper
-
     audio = load_audio(args.audio)
-    log(f"Transcribing {args.audio.name}")
-    result = mlx_whisper.transcribe(audio, path_or_hf_repo=args.model, language=args.language,
-                                    condition_on_previous_text=False, word_timestamps=True)
+    # Whisper's output is kept privately in Application Support, so the speakers can be redone
+    # without transcribing again.
+    language = args.language
+    if not language:
+        try:
+            language = spoken_language(audio, args.model)
+        except Exception as error:   # Whisper's own guess is the fallback
+            log(f"Language check skipped: {error}")
+    stat = args.audio.stat()
+    cached = CACHE / f"{args.audio.stem}-{stat.st_size}-{args.model.replace('/', '_')}-{language or 'auto'}.json"
+    if cached.exists():
+        result = json.loads(cached.read_text(encoding="utf-8"))
+    else:
+        import mlx_whisper
+
+        log(f"Transcribing {args.audio.name} ({language or 'language from the start'})")
+        result = mlx_whisper.transcribe(audio, path_or_hf_repo=args.model, language=language,
+                                        condition_on_previous_text=False, word_timestamps=True)
+        try:
+            CACHE.mkdir(parents=True, exist_ok=True)
+            cached.write_text(json.dumps({"language": result.get("language"), "segments": result.get("segments", [])},
+                                         ensure_ascii=False, default=float), encoding="utf-8")
+        except Exception as error:   # the cache is only a shortcut
+            log(f"Not cached: {error}")
     turns = []
     if not args.no_speakers:
         try:
             log("Telling the voices apart")
-            turns = diarize(audio, args.speakers)
+            turns = diarize(audio, args.speakers, args.threshold)
         except Exception as error:   # a transcript without speakers beats no transcript
             log(f"Speakers skipped: {error}")
 

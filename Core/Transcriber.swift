@@ -51,6 +51,15 @@ final class Transcriber {
         return FileManager.default.fileExists(atPath: cache.path)
     }
 
+    /// Whisper's cached output for a recording (Application Support/MeetingMemo/cache), removed with it.
+    static func cachedFiles(for audio: URL) -> [URL] {
+        let cache = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("MeetingMemo/cache")
+        let prefix = audio.deletingPathExtension().lastPathComponent + "-"
+        return ((try? FileManager.default.contentsOfDirectory(at: cache, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.lastPathComponent.hasPrefix(prefix) }
+    }
+
     /// The note next to a recording: "Ari #2 — 2026-11-04 13.30.md".
     static func noteURL(for audio: URL) -> URL {
         audio.deletingPathExtension().appendingPathExtension("md")

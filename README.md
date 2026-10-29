@@ -46,8 +46,9 @@ on-device, nothing uploaded.
 - **Transcripts with who said what.** Each recording is transcribed on the Mac with Whisper
   large-v3-turbo (MLX, run through `uv`), and sherpa-onnx tells the voices apart (pyannote segmentation +
   WeSpeaker embedding, 32 MB, fetched once). Saved as a `.md` with the same name next to the recording.
-  The audio never leaves the Mac. Then, if "Clean up with Claude" is on, the `claude` CLI gets the
-  transcript's text only, fixes punctuation and misheard words and names the speakers (you, and the
+  The audio never leaves the Mac. The language is detected across the whole recording (not just its first
+  30 s), so a Russian session stays Russian. Then, if "Clean up with Claude" is on, the `claude` CLI gets
+  the transcript's text only (Fable 5.1, or Opus 5.5), fixes punctuation and misheard words and names the speakers (you, and the
   meeting's "Speaker name", e.g. Therapist): the clean version sits above the raw one. Both are in
   Settings → Recording.
 - **Numbered names.** `Psychotherapist #2 — 2026-10-27 08.00.m4a`, numbered per meeting, saved to
